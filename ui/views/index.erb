@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>3D Поверхность</title>
+  <link rel="stylesheet" href="/lib/bootstrap.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/lib/plotly.js"></script>
+</head>
+<body>
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-4">
+      <div class="mb-3">
+        <a href="/task/new" class="btn btn-primary">Добавить задачу</a>
+      </div>
+      <div id="file-list"></div>
+    </div>
+    <div class="col-md-8">
+      <div id="task-settings" class="mb-4"></div>
+      <div id="surface" class="border rounded p-3" style="min-height:400px;"></div>
+    </div>
+  </div>
+</div>
+<script src="/main.js"></script>
+</body>
+</html>

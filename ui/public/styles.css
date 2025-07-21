@@ -1,0 +1,68 @@
+#file-list {
+  font-family: monospace;
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 12px;
+  min-width: 260px;
+  max-width: 350px;
+}
+.tree-folder-name {
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 0;
+  padding: 2px 0;
+  color: #0d6efd;
+
+}
+.tree-folder-name:hover {
+  color: #0a58ca;
+  background: none;
+}
+
+.tree-file {
+  cursor: pointer;
+  margin-left: 24px;
+  padding: 2px 0;
+  color: #212529;
+  transition: background 0.2s;
+}
+.tree-file.selected {
+  background: #e3f2fd;
+  color: #0a58ca;
+}
+.tree-file:hover {
+  background: #e9ecef;
+}
+.tree-children {
+  margin-left: 24px;
+}
+
+/* Bootstrap-совместимые стили для графика и настроек */
+#surface {
+  background: #fff;
+  min-height: 400px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+#task-settings {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+/* Улучшение кликабельности */
+.tree-folder:hover, .tree-file:hover {
+  background: #e9ecef;
+}
+
+/* Скрытие пустых блоков */
+#surface:empty {
+  background: none;
+  box-shadow: none;
+}
+#task-settings:empty {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+

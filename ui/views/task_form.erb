@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title><%= mode == 'new' ? 'Создать задачу' : 'Редактировать задачу' %></title>
+  <link rel="stylesheet" href="/lib/bootstrap.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="mb-4"><%= mode == 'new' ? 'Создать задачу' : 'Редактировать задачу' %></h2>
+          <form id="task-form" method="post" action="<%= mode == 'new' ? '/create_task' : '/save_settings' %>">
+            <div class="mb-3">
+              <label for="task_name" class="form-label">Имя задачи</label>
+              <input type="text" class="form-control" id="task_name" name="task_name" value="<%= task && task['task_name'] %>" <%= mode == 'edit' ? 'readonly' : '' %> required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Параметры для оптимизации</label>
+              <table class="table table-bordered table-sm align-middle" id="params-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Имя</th>
+                    <th>Мин</th>
+                    <th>Макс</th>
+                    <th style="width:40px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if task && task['params'] %>
+                    <% task['params'].each do |p| %>
+                      <tr class="param-row">
+                        <td><input type="text" class="form-control" name="param_name[]" value="<%= p['name'] %>" required></td>
+                        <td><input type="number" class="form-control" name="param_min[]" value="<%= p['min'] %>" required></td>
+                        <td><input type="number" class="form-control" name="param_max[]" value="<%= p['max'] %>" required></td>
+                        <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+                      </tr>
+                    <% end %>
+                  <% end %>
+                </tbody>
+              </table>
+              <button type="button" id="add-param-btn" class="btn btn-outline-primary btn-sm" onclick="addParamRow()">Добавить параметр</button>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-success"><%= mode == 'new' ? 'Создать' : 'Сохранить' %></button>
+              <a href="/" class="btn btn-secondary">Отмена</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function addParamRow() {
+  const tbody = document.querySelector('#params-table tbody');
+  const tr = document.createElement('tr');
+  tr.className = 'param-row';
+  tr.innerHTML = `
+    <td><input type="text" class="form-control" name="param_name[]" required></td>
+    <td><input type="number" class="form-control" name="param_min[]" required></td>
+    <td><input type="number" class="form-control" name="param_max[]" required></td>
+    <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+</script>
+</body>
+</html>
