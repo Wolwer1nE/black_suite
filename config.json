@@ -1,0 +1,31 @@
+{
+  "optimization": {
+    "method": "genetic",
+    "max_generations": 50,
+    "strategy": {
+      "population_size": 20,
+      "crossover_prob": 0.8,
+      "mutation_prob": 0.1,
+      "tournament_size": 3,
+      "elite_count": 2,
+      "epsilon": 1e-6,
+      "max_stagnant_epochs": 5
+    },
+    "batch_size": 10
+  },
+  "parameters": {
+    "names": ["he", "hp"],
+    "mins": [0.001, 0.001],
+    "maxs": [0.01, 0.01]
+  },
+  "comsol": {
+    "file": "eigenOpt.mph",
+    "method_call": "target_function",
+    "work_dir": "work_dir",
+    "silent_output": false
+  },
+  "output": {
+    "cache_file": "optimization_cache.json",
+    "print_progress": true
+  }
+}

@@ -18,19 +18,18 @@ class Problem
 
   # @param [Array] params
   # @param [Numeric] target_value
-  def initialize(params, target_value)
-    @params = params
-    @target_value = target_value
+  def initialize()
+
   end
 
   # @param [ComsolRunner] runner
-  def solve_problem(methodcall, runner)
-    command = "comsolbatch -inputfile #{runner.file_name} -pname #{build_names} -plist \"#{build_values}\" -methodcall #{methodcall} -nosave"
+  def solve_problem(methodcall, runner, paramfile, silent_mode: false)
+    command = "comsolbatch -inputfile #{runner.file_name} -paramfile #{paramfile} -methodcall #{methodcall} -nosave"
     result = nil
     Dir.chdir(runner.work_dir) do
       IO.popen(command) do |io|
         io.each_line do |line|
-          puts line
+          puts "\e[34m#{line}\e[0m" unless silent_mode
         end
       end
       output_path = File.join(runner.work_dir, runner.output_file)
@@ -38,13 +37,4 @@ class Problem
     end
     result
   end
-
-  def build_names
-    @params.map(&:name).join(',')
-  end
-
-  def build_values
-    @params.map(&:value).join(',')
-  end
-
 end

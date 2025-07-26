@@ -1,113 +1,85 @@
 require 'sinatra'
 require 'json'
 require 'fileutils'
-require_relative 'src/project'
-include Project
+require_relative 'src/optimization_cache_dto'
+
 get '/' do
   erb :index
 end
 
-# Страница создания задачи
-get '/task/new' do
-  erb :task_form, locals: { mode: 'new', task: nil }
-end
-
-get '/task/edit/:task_name' do
-  task_dir = File.join('data', params[:task_name])
-  task_file = File.join(task_dir, 'task.json')
-  if File.exist?(task_file)
-    task = JSON.parse(File.read(task_file))
-    erb :task_form, locals: { mode: 'edit', task: task }
-  else
-    halt 404, "Задача не найдена"
-  end
-end
-
-
-get '/task/:task_name' do
-  task_dir = File.join('data', params[:task_name])
-  task_file = File.join(task_dir, 'task.json')
-  if File.exist?(task_file)
-    content_type :json
-    File.read(task_file)
-  else
-    halt 404, { error: 'Задача не найдена' }.to_json
-  end
-end
-
-get '/tree' do
-
-
+# Получить список всех кэшей с метаданными
+get '/caches' do
   content_type :json
-  tree('data').to_json
+
+  work_cache_manager = OptimizationCacheManager.new('work_dir')
+  caches = work_cache_manager.scan_and_load_caches
+
+  result = caches.map do |cache_info|
+    cache = cache_info[:cache]
+    fitnesses = cache.entries.map(&:fitness)
+    {
+      id: File.basename(cache_info[:file_path], '.json'),
+      file_path: cache_info[:file_path],
+      file_name: File.basename(cache_info[:file_path]),
+      timestamp: cache.timestamp,
+      total_evaluations: cache.total_evaluations,
+      dimension: cache.dimension,
+      names: cache.names,
+      comsol_file: cache.comsol_file,
+      best_fitness: fitnesses.min,
+      worst_fitness: fitnesses.max
+    }
+  end
+
+  result.to_json
 end
 
-
-get '/surface' do
-  filename = params['file']
-  halt 400, { error: 'No file specified' }.to_json unless filename
-
-  path = File.join('data', filename)
-  halt 404, { error: 'File not found' }.to_json unless File.exist?(path)
-
-  x, y, z = [], [], []
-  File.foreach(path) do |line|
-    cols = line.strip.split("\t")
-    next unless cols.size >= 3
-    x << cols[0].to_f
-    y << cols[1].to_f
-    z << cols[2].to_f
-  end
-
-  x_uniq = x.uniq.sort
-  y_uniq = y.uniq.sort
-  z_matrix = Array.new(y_uniq.size) { Array.new(x_uniq.size) }
-
-  x.size.times do |i|
-    xi = x_uniq.index(x[i])
-    yi = y_uniq.index(y[i])
-    z_matrix[yi][xi] = z[i]
-  end
-
+# Получить детальную информацию о конкретном кэше
+get '/cache/:cache_id' do
   content_type :json
-  { x: x_uniq, y: y_uniq, z: z_matrix }.to_json
-end
+  cache_id = params[:cache_id]
 
-post '/create_task' do
-  task_name = params[:task_name]
+  work_cache_manager = OptimizationCacheManager.new('work_dir')
+  caches = work_cache_manager.scan_and_load_caches
 
-  halt 400, { error: 'Missing fields' }.to_json unless task_name && params
-  project_dir = File.join('data', task_name)
-  Dir.mkdir(project_dir) unless Dir.exist?(project_dir)
-
-  settings = {
-    'task_name' => task_name,
-    'params' => []
-  }
-  File.write(File.join(project_dir, 'settings.json'), JSON.pretty_generate(settings))
-
-  redirect '/'
-end
-
-post '/save_settings' do
-  req = JSON.parse(request.body.read)
-  task_name = req['task_name']
-  params = req['params']
-  halt 400, { error: 'Missing fields' }.to_json unless task_name && params
-
-  project_dir = File.join('data', task_name)
-  settings_path = File.join(project_dir, 'settings.json')
-  if !Dir.exist?(project_dir)
-    halt 404, { error: 'Задача не найдена' }.to_json
+  cache_info = caches.find do |info|
+    File.basename(info[:file_path], '.json') == cache_id
   end
 
-  settings = {
-    'task_name' => task_name,
-    'params' => params
+  halt 404, { error: 'Кэш не найден' }.to_json unless cache_info
+
+  cache = cache_info[:cache]
+
+  # Подготавливаем данные для графиков
+  points = cache.entries.map do |entry|
+    {
+      values: entry.values,
+      fitness: entry.fitness
+    }
+  end
+
+  # Статистика
+  fitnesses = cache.entries.map(&:fitness)
+
+  result = {
+    id: cache_id,
+    file_name: File.basename(cache_info[:file_path]),
+    timestamp: cache.timestamp,
+    total_evaluations: cache.total_evaluations,
+    dimension: cache.dimension,
+    parameter_names: cache.names,
+    mins: cache.mins,
+    maxs: cache.maxs,
+    comsol_file: cache.comsol_file,
+    methodcall: cache.methodcall,
+    statistics: {
+      best_fitness: fitnesses.min,
+      worst_fitness: fitnesses.max,
+      average_fitness: fitnesses.sum / fitnesses.size.to_f,
+      median_fitness: fitnesses.sort[fitnesses.size / 2]
+    },
+    points: points
   }
-  File.write(settings_path, JSON.pretty_generate(settings))
-  status 200
-  body 'ok'
+
+  result.to_json
 end
-
-
