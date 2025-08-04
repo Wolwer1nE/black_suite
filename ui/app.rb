@@ -11,7 +11,7 @@ end
 get '/caches' do
   content_type :json
 
-  work_cache_manager = OptimizationCacheManager.new('work_dir')
+  work_cache_manager = OptimizationCacheManager.new('../work_dir')
   caches = work_cache_manager.scan_and_load_caches
 
   result = caches.map do |cache_info|
@@ -26,6 +26,7 @@ get '/caches' do
       dimension: cache.dimension,
       names: cache.names,
       comsol_file: cache.comsol_file,
+      best_point: cache.entries.min_by(&:fitness).values,
       best_fitness: fitnesses.min,
       worst_fitness: fitnesses.max
     }
@@ -39,7 +40,7 @@ get '/cache/:cache_id' do
   content_type :json
   cache_id = params[:cache_id]
 
-  work_cache_manager = OptimizationCacheManager.new('work_dir')
+  work_cache_manager = OptimizationCacheManager.new('../work_dir')
   caches = work_cache_manager.scan_and_load_caches
 
   cache_info = caches.find do |info|
@@ -76,7 +77,8 @@ get '/cache/:cache_id' do
       best_fitness: fitnesses.min,
       worst_fitness: fitnesses.max,
       average_fitness: fitnesses.sum / fitnesses.size.to_f,
-      median_fitness: fitnesses.sort[fitnesses.size / 2]
+      median_fitness: fitnesses.sort[fitnesses.size / 2],
+      best_point: cache.entries.min_by(&:fitness).values
     },
     points: points
   }

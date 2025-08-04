@@ -76,7 +76,13 @@ function selectCache(cacheId) {
                 '<div class="alert alert-danger">Ошибка загрузки данных кэша: ' + err.message + '</div>';
         });
 }
-
+function bestPointString(names, values) {
+    let result = "";
+    names.forEach((name, index) => (
+        result += `${name}: ${values[index].toFixed(4)}, `
+    ))
+    return result;
+}
 // Отображение деталей кэша
 function displayCacheDetails(cache) {
     const detailsElement = document.getElementById('cache-details');
@@ -102,6 +108,7 @@ function displayCacheDetails(cache) {
                     <div class="col-md-6">
                         <h6>Статистика</h6>
                         <ul class="list-unstyled">
+                            <li><strong>Лучшая точка:</strong> ${bestPointString(cache.parameter_names, cache.statistics.best_point)}</li>
                             <li><strong>Лучший результат:</strong> ${cache.statistics.best_fitness.toFixed(4)}</li>
                             <li><strong>Худший результат:</strong> ${cache.statistics.worst_fitness.toFixed(4)}</li>
                             <li><strong>Средний результат:</strong> ${cache.statistics.average_fitness.toFixed(4)}</li>
@@ -162,25 +169,43 @@ function drawOptimizationPlot(cache) {
                 color: z,
                 colorscale: 'Viridis',
                 colorbar: {
-                    title: 'Fitness'
+                    title: 'Значение целевой функции'
                 }
             },
             text: z.map((fitness, index) =>
                 `${cache.parameter_names[0]}: ${x[index].toFixed(4)}<br>` +
                 `${cache.parameter_names[1]}: ${y[index].toFixed(4)}<br>` +
-                `Fitness: ${fitness.toFixed(4)}`
+                `Целевая функция: ${fitness.toFixed(4)}`
             ),
             hovertemplate: '%{text}<extra></extra>'
         };
 
         const layout = {
-            title: 'Точки оптимизации (3D)',
-            scene: {
-                xaxis: { title: cache.parameter_names[0] },
-                yaxis: { title: cache.parameter_names[1] },
-                zaxis: { title: 'Fitness' }
+            title: {
+                text: 'Точки оптимизации в пространстве параметров',
+                font: { size: 16 }
             },
-            margin: { l: 0, r: 0, b: 0, t: 30 }
+            scene: {
+                xaxis: {
+                    title: {
+                        text: `Параметр: ${cache.parameter_names[0]}`,
+                        font: { size: 14 }
+                    }
+                },
+                yaxis: {
+                    title: {
+                        text: `Параметр: ${cache.parameter_names[1]}`,
+                        font: { size: 14 }
+                    }
+                },
+                zaxis: {
+                    title: {
+                        text: 'Значение целевой функции',
+                        font: { size: 14 }
+                    }
+                }
+            },
+            margin: { l: 0, r: 0, b: 0, t: 50 }
         };
 
         Plotly.newPlot(plotDiv, [trace], layout);
@@ -195,21 +220,39 @@ function drawOptimizationPlot(cache) {
             y: y,
             mode: 'markers',
             type: 'scatter',
-            marker: { size: 6 }
+            marker: { size: 6 },
+            text: y.map((fitness, index) =>
+                `${cache.parameter_names[0]}: ${x[index].toFixed(4)}<br>` +
+                `Целевая функция: ${fitness.toFixed(4)}`
+            ),
+            hovertemplate: '%{text}<extra></extra>'
         };
 
         const layout = {
-            title: 'Точки оптимизации (2D)',
-            xaxis: { title: cache.parameter_names[0] },
-            yaxis: { title: 'Fitness' },
-            margin: { l: 50, r: 20, b: 50, t: 30 }
+            title: {
+                text: 'Зависимость целевой функции от параметра оптимизации',
+                font: { size: 16 }
+            },
+            xaxis: {
+                title: {
+                    text: `Параметр оптимизации: ${cache.parameter_names[0]}`,
+                    font: { size: 14 }
+                }
+            },
+            yaxis: {
+                title: {
+                    text: 'Значение целевой функции',
+                    font: { size: 14 }
+                }
+            },
+            margin: { l: 70, r: 20, b: 70, t: 50 }
         };
 
         Plotly.newPlot(plotDiv, [trace], layout);
 
     } else {
         // Для многомерных случаев - показываем fitness vs iteration
-        const iterations = cache.points.map((_, index) => index);
+        const iterations = cache.points.map((_, index) => index + 1);
         const fitness = cache.points.map(p => p.fitness);
 
         const trace = {
@@ -218,14 +261,43 @@ function drawOptimizationPlot(cache) {
             mode: 'lines+markers',
             type: 'scatter',
             line: { width: 2 },
-            marker: { size: 4 }
+            marker: { size: 4 },
+            text: fitness.map((f, index) =>
+                `Итерация: ${iterations[index]}<br>` +
+                `Целевая функция: ${f.toFixed(4)}<br>` +
+                `Параметры: [${cache.points[index].values.map(v => v.toFixed(3)).join(', ')}]`
+            ),
+            hovertemplate: '%{text}<extra></extra>'
         };
 
         const layout = {
-            title: `Прогресс оптимизации (${cache.dimension}D)`,
-            xaxis: { title: 'Итерация' },
-            yaxis: { title: 'Fitness' },
-            margin: { l: 50, r: 20, b: 50, t: 30 }
+            title: {
+                text: `Прогресс оптимизации (${cache.dimension}D пространство параметров)`,
+                font: { size: 16 }
+            },
+            xaxis: {
+                title: {
+                    text: 'Номер итерации',
+                    font: { size: 14 }
+                }
+            },
+            yaxis: {
+                title: {
+                    text: 'Значение целевой функции',
+                    font: { size: 14 }
+                }
+            },
+            margin: { l: 70, r: 20, b: 70, t: 80 },
+            annotations: [{
+                text: `Параметры оптимизации: ${cache.parameter_names.join(', ')}`,
+                showarrow: false,
+                x: 0.5,
+                y: 1.1,
+                xref: 'paper',
+                yref: 'paper',
+                font: { size: 12 },
+                xanchor: 'center'
+            }]
         };
 
         Plotly.newPlot(plotDiv, [trace], layout);

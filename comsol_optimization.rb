@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require_relative 'src/optimization_config'
-require_relative 'src/genetics/simple_batch_gen_alg'
+require_relative 'src/genetics/comsol_genetic_optimizer'
 
 def main
   if ARGV.empty?
@@ -19,7 +19,6 @@ def main
   begin
     config = OptimizationConfig.new(config_file)
 
-    # Красивый вывод загруженной конфигурации (убираем условие для отладки)
     print_config_summary(config, config_file)
 
     case config.method.downcase
@@ -91,27 +90,15 @@ def print_config_summary(config, config_file)
 end
 
 def run_genetic_optimization(config)
-  puts "Запуск генетической оптимизации..." if config.print_progress?
-
-  # Создаем стратегию из конфигурации
-  strategy = config.create_genetic_strategy
-
-  ga = SimpleBatchGeneticAlgorithm.new(
-    config.parameter_mins,
-    config.parameter_maxs,
-    config.parameter_names,
-    config.comsol_file,
-    config.method_call,
-    config.cache_file,
-    config.work_dir,
-    strategy
-  )
-
-  best_individual = ga.evolve(config.max_generations)
+  optimizer = ComsolGeneticOptimizer.new(config)
+  best_individual = optimizer.optimize
 
   if config.print_progress?
     puts "\nОптимизация завершена!"
-    puts "Лучший результат сохранен в #{config.cache_file}"
+    puts "Лучший результат:"
+    puts "  Параметры: #{best_individual.values.map.with_index { |val, i| "#{config.parameter_names[i]}=#{val.round(6)}" }.join(', ')}"
+    puts "  Fitness: #{best_individual.fitness.round(4)}"
+    puts "Результаты сохранены в #{config.cache_file}"
   end
 end
 

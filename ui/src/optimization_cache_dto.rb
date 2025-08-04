@@ -18,7 +18,8 @@ end
 
 
 class OptimizationCache
-  attr_accessor :total_evaluations, :timestamp, :dimension, :names, :mins, :maxs,
+  attr_accessor :total_evaluations, :timestamp,
+                :dimension, :names, :mins, :maxs,
                 :comsol_file, :methodcall, :cache
 
   def initialize
@@ -34,6 +35,7 @@ class OptimizationCache
     cache.names = json_data['names']
     cache.mins = json_data['mins']
     cache.maxs = json_data['maxs']
+
     cache.comsol_file = json_data['comsol_file']
     cache.methodcall = json_data['methodcall']
 
@@ -42,7 +44,6 @@ class OptimizationCache
         cache.cache[key] = CacheEntry.new(entry_data['fitness'], entry_data['values'])
       end
     end
-
     cache
   end
 
@@ -54,12 +55,28 @@ class OptimizationCache
       names: @names,
       mins: @mins,
       maxs: @maxs,
+      best: @best,
       comsol_file: @comsol_file,
       methodcall: @methodcall,
       cache: @cache.transform_values(&:to_h)
     }
   end
-
+  def statistics
+    fitnesses = entries.map(&:fitness)
+    {
+      id: File.basename(cache_info[:file_path], '.json'),
+      file_path: cache_info[:file_path],
+      file_name: File.basename(cache_info[:file_path]),
+      timestamp: cache.timestamp,
+      total_evaluations: cache.total_evaluations,
+      dimension: cache.dimension,
+      names: cache.names,
+      comsol_file: cache.comsol_file,
+      best_point: cache.entries.min_by(&:fitness)&.values,
+      best_fitness: fitnesses.min,
+      worst_fitness: fitnesses.max
+    }
+  end
 
   def entries
     @cache.values
@@ -71,7 +88,7 @@ class OptimizationCache
     @total_evaluations = (@total_evaluations || 0) + 1
   end
 
-  def to_json
+  def to_json(*_args)
     JSON.generate(to_h)
   end
 
@@ -139,29 +156,7 @@ class OptimizationCacheManager
     merged
   end
 
-  # Получить статистику по всем кэшам
-  def get_statistics(caches)
-    return {} if caches.empty?
 
-    all_entries = caches.flat_map { |c| c[:cache].entries }
-
-    fitnesses = all_entries.map(&:fitness)
-
-    {
-      total_files: caches.size,
-      total_evaluations: all_entries.size,
-      best_fitness: fitnesses.min,
-      worst_fitness: fitnesses.max,
-      average_fitness: fitnesses.sum / fitnesses.size.to_f,
-      files_info: caches.map do |c|
-        {
-          file: File.basename(c[:file_path]),
-          evaluations: c[:cache].total_evaluations,
-          best_in_file: c[:cache].best_entries(1).first&.fitness
-        }
-      end
-    }
-  end
 
   private
 

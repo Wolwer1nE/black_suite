@@ -28,7 +28,7 @@ class OptimizationConfig
 
   def create_genetic_strategy
     strategy_config = @optimization['strategy']
-
+    
     require_relative 'genetics/genetic_strategy'
     GeneticStrategy.new(
       population_size: strategy_config['population_size'],

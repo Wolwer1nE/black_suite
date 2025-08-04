@@ -14,18 +14,18 @@
     "batch_size": 10
   },
   "parameters": {
-    "names": ["he", "hp"],
-    "mins": [0.001, 0.001],
-    "maxs": [0.01, 0.01]
+    "mins": [0.004, 0.018, 0.005],
+    "maxs": [0.012, 0.026, 0.025],
+    "names": ["c1", "c2", "c3"]
   },
   "comsol": {
-    "file": "eigenOpt.mph",
+    "file": "3problemOpt.mph",
     "method_call": "target_function",
     "work_dir": "work_dir",
     "silent_output": false
   },
   "output": {
-    "cache_file": "optimization_cache.json",
+    "cache_file": "3d_optimization_cache.json",
     "print_progress": true
   }
 }
