@@ -80,7 +80,8 @@ get '/cache/:cache_id' do
       median_fitness: fitnesses.sort[fitnesses.size / 2],
       best_point: cache.entries.min_by(&:fitness).values
     },
-    points: points
+    points: points,
+    best_fitness_history: cache.best_fitness_history || [] # <--- добавлено
   }
 
   result.to_json

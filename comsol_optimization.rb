@@ -18,18 +18,8 @@ def main
 
   begin
     config = OptimizationConfig.new(config_file)
-
     print_config_summary(config, config_file)
-
-    case config.method.downcase
-    when 'genetic'
-      run_genetic_optimization(config)
-    when 'gradient'
-      run_gradient_optimization(config)
-    else
-      puts "Неизвестный метод оптимизации: #{config.method}"
-      exit 1
-    end
+    run_genetic_optimization(config)
 
   rescue => e
     puts "Ошибка: #{e.message}"
@@ -40,7 +30,7 @@ end
 
 def print_config_summary(config, config_file)
   puts "=" * 60
-  puts "🚀 COMSOL OPTIMIZATION SUITE"
+  puts "🚀 Загрузка конфигурации"
   puts "=" * 60
   puts "📁 Конфигурация загружена из: #{File.basename(config_file)}"
   puts "⏰ Время запуска: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}"
@@ -49,14 +39,12 @@ def print_config_summary(config, config_file)
   strategy = config.create_genetic_strategy
 
   puts "🧬 ПАРАМЕТРЫ ОПТИМИЗАЦИИ:"
-  puts "  Метод:               #{config.method.upcase}"
-  puts "  Максимум поколений:  #{config.max_generations}"
-  puts "  Размер популяции:    #{strategy.population_size}"
-  puts "  Размер батча:        #{config.batch_size}"
-  puts "  Вероятность мутации: #{(strategy.mutation_prob * 100).round(1)}%"
+  puts "  Максимум поколений:     #{config.max_generations}"
+  puts "  Размер популяции:       #{strategy.population_size}"
+  puts "  Вероятность мутации:    #{(strategy.mutation_prob * 100).round(1)}%"
   puts "  Вероятность кроссовера: #{(strategy.crossover_prob * 100).round(1)}%"
-  puts "  Размер турнира:      #{strategy.tournament_size}"
-  puts "  Элитных особей:      #{strategy.elite_count}"
+  puts "  Размер турнира:         #{strategy.tournament_size}"
+  puts "  Элитных особей:         #{strategy.elite_count}"
   puts
 
   puts "🎯 ПАРАМЕТРЫ МОДЕЛИ:"
@@ -76,11 +64,6 @@ def print_config_summary(config, config_file)
 
   puts "💾 НАСТРОЙКИ ВЫВОДА:"
   puts "  Файл кэша:           #{config.cache_file}"
-  puts "  Показ прогресса:     #{config.print_progress? ? 'Да' : 'Нет'}"
-  puts
-
-  puts "📊 СТРАТЕГИЯ ГЕНЕТИЧЕСКОГО АЛГОРИТМА:"
-  puts "  #{strategy.description}"
   puts
 
   puts "=" * 60
@@ -93,22 +76,12 @@ def run_genetic_optimization(config)
   optimizer = ComsolGeneticOptimizer.new(config)
   best_individual = optimizer.optimize
 
-  if config.print_progress?
-    puts "\nОптимизация завершена!"
-    puts "Лучший результат:"
-    puts "  Параметры: #{best_individual.values.map.with_index { |val, i| "#{config.parameter_names[i]}=#{val.round(6)}" }.join(', ')}"
-    puts "  Fitness: #{best_individual.fitness.round(4)}"
-    puts "Результаты сохранены в #{config.cache_file}"
-  end
+  puts "\nОптимизация завершена!"
+  puts "Лучший результат:"
+  puts "  Параметры: #{best_individual.values.map.with_index { |val, i| "#{config.parameter_names[i]}=#{val.round(6)}" }.join(', ')}"
+  puts "  Fitness: #{best_individual.fitness.round(4)}"
 end
 
-def run_gradient_optimization(config)
-  puts "Запуск градиентной оптимизации..." if config.print_progress?
-
-  # Здесь будет подключен градиентный спуск когда он будет готов
-  puts "Градиентная оптимизация пока не реализована"
-  exit 1
-end
 
 
 main

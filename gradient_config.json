@@ -1,0 +1,19 @@
+{
+  "optimization_parameters": {
+    "mins": [0.004, 0.018, 0.005],
+    "maxs": [0.012, 0.026, 0.025],
+    "names": ["c1", "c2", "c3"]
+  },
+  "comsol_settings": {
+    "model_file": "3problemOpt.mph",
+    "method_call": "target_function",
+    "output_file": "demo_out.txt",
+    "input_file": "comsol_batch_input.txt"
+  },
+  "genetic_algorithm": {
+    "dimension": 3,
+    "bits": 32,
+    "seed": 42
+  }
+}
+

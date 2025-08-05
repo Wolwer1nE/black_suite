@@ -1,12 +1,12 @@
 require 'json'
 
 class OptimizationConfig
-  attr_reader :optimization, :parameters, :comsol, :output
+  attr_reader :strategy, :parameters, :comsol, :output
 
   def initialize(config_file)
     @config_data = JSON.parse(File.read(config_file))
 
-    @optimization = @config_data['optimization']
+    @strategy = @config_data['strategy']
     @parameters = @config_data['parameters']
     @comsol = @config_data['comsol']
     @output = @config_data['output']
@@ -15,30 +15,26 @@ class OptimizationConfig
   end
 
   def method
-    @optimization['method']
+    @strategy['method']
   end
 
   def max_generations
-    @optimization['max_generations']
+    @strategy['max_generations']
   end
 
-  def batch_size
-    @optimization['batch_size']
-  end
 
   def create_genetic_strategy
-    strategy_config = @optimization['strategy']
-    
+
     require_relative 'genetics/genetic_strategy'
     GeneticStrategy.new(
-      population_size: strategy_config['population_size'],
-      iterations: @optimization['max_generations'],
-      crossover_prob: strategy_config['crossover_prob'],
-      mutation_prob: strategy_config['mutation_prob'],
-      tournament_size: strategy_config['tournament_size'],
-      elite_count: strategy_config['elite_count'],
-      epsilon: strategy_config['epsilon'],
-      max_stagnant_epochs: strategy_config['max_stagnant_epochs']
+      population_size: @strategy['population_size'],
+      iterations: @strategy['max_generations'],
+      crossover_prob: @strategy['crossover_prob'],
+      mutation_prob: @strategy['mutation_prob'],
+      tournament_size: @strategy['tournament_size'],
+      elite_count: @strategy['elite_count'],
+      epsilon: @strategy['epsilon'],
+      max_stagnant_epochs: @strategy['max_stagnant_epochs']
     )
   end
 
@@ -85,22 +81,15 @@ class OptimizationConfig
   private
 
   def validate_config
-    required_sections = %w[optimization parameters comsol output]
+    required_sections = %w[strategy parameters comsol output]
     required_sections.each do |section|
       raise "Отсутствует секция '#{section}' в конфигурации" unless @config_data[section]
     end
 
-    required_optimization = %w[method max_generations batch_size strategy]
+    strategy = @config_data['strategy']
+    required_optimization = %w[max_generations population_size]
     required_optimization.each do |key|
-      raise "Отсутствует параметр 'optimization.#{key}'" unless @optimization[key]
-    end
-
-    # Проверяем параметры strategy
-    if @optimization['strategy']
-      required_strategy = %w[population_size crossover_prob mutation_prob tournament_size elite_count]
-      required_strategy.each do |key|
-        raise "Отсутствует параметр 'optimization.strategy.#{key}'" unless @optimization['strategy'][key]
-      end
+      raise "Отсутствует параметр 'strategy.#{key}'" unless strategy[key]
     end
 
     required_parameters = %w[names mins maxs]

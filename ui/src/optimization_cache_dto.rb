@@ -20,10 +20,11 @@ end
 class OptimizationCache
   attr_accessor :total_evaluations, :timestamp,
                 :dimension, :names, :mins, :maxs,
-                :comsol_file, :methodcall, :cache
+                :comsol_file, :methodcall, :cache, :best_fitness_history
 
   def initialize
     @cache = {}
+    @best_fitness_history = []
   end
 
   def self.from_json(json_data)
@@ -38,6 +39,7 @@ class OptimizationCache
 
     cache.comsol_file = json_data['comsol_file']
     cache.methodcall = json_data['methodcall']
+    cache.best_fitness_history = json_data['best_fitness_history'] || []
 
     if json_data['cache']
       json_data['cache'].each do |key, entry_data|

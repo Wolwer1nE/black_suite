@@ -12,7 +12,7 @@ class ComsolLogger
 end
 
 # Загрузка конфигурации из файла
-config_path = 'work_dir/optimization_config.json'
+config_path = 'gradient_config.json'
 begin
   config = JSON.parse(File.read(config_path))
 
@@ -191,7 +191,7 @@ begin
   puts "Эффективность: #{format('%.2f', optimizer.total_fitness_evaluations.to_f / (end_time - start_time))} вычислений/сек"
 
   # Сохраняем результат в файл
-  result_file = "gradient_result_#{Time.now.strftime('%Y%m%d_%H%M%S')}.txt"
+  result_file = "work_dir/gradient_result_#{Time.now.strftime('%Y%m%d_%H%M%S')}.txt"
   File.open(result_file, 'w') do |file|
     file.puts 'Результат градиентного спуска COMSOL'
     file.puts "Дата: #{Time.now}"

@@ -1,17 +1,13 @@
 {
-  "optimization": {
-    "method": "genetic",
-    "max_generations": 50,
-    "strategy": {
+  "strategy": {
+      "max_generations": 50,
       "population_size": 20,
       "crossover_prob": 0.8,
       "mutation_prob": 0.1,
       "tournament_size": 3,
       "elite_count": 2,
       "epsilon": 1e-6,
-      "max_stagnant_epochs": 5
-    },
-    "batch_size": 10
+      "max_stagnant_epochs": 20
   },
   "parameters": {
     "mins": [0.004, 0.018, 0.005],
@@ -25,7 +21,6 @@
     "silent_output": false
   },
   "output": {
-    "cache_file": "3d_optimization_cache.json",
-    "print_progress": true
+    "cache_file": "3d_optimization_cache.json"
   }
 }

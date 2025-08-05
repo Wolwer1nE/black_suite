@@ -78,8 +78,6 @@ class GeneticAlgorithm
     @best_history.last(@strategy.max_stagnant_epochs).all? do |x|
       (x-last).abs < @strategy.epsilon
     end
-
-
   end
 
   def crossover

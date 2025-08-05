@@ -6,7 +6,7 @@ require_relative '../simple_logger'
 require 'json'
 
 class ComsolGeneticOptimizer
-  attr_reader :total_evaluations, :cache, :logger
+  attr_reader :total_evaluations, :cache, :logger, :best_fitness_history
 
   def initialize(config)
     @config = config
@@ -64,6 +64,7 @@ class ComsolGeneticOptimizer
 
   def setup_cache
     @cache = {}
+    @best_fitness_history = []  # Массив лучших значений фитнес-функции для каждой эпохи
     #load_existing_cache
   end
 
@@ -349,6 +350,7 @@ class ComsolGeneticOptimizer
 
   def log_best_individual(generation)
     best = @population.min_by(&:fitness)
+    @best_fitness_history << best.fitness  # Сохраняем лучшее значение фитнес-функции для текущей эпохи
     @logger.log("Лучший: #{format_individual(best)}")
   end
 
@@ -359,9 +361,16 @@ class ComsolGeneticOptimizer
 
     "#{params}, fitness=#{individual.fitness.round(4)}"
   end
+  def process_stagnant?
+    return false if @best_fitness_history.size < @strategy.max_stagnant_epochs
 
+    last = @best_fitness_history.last
+    @best_fitness_history.last(@strategy.max_stagnant_epochs).all? do |x|
+      (x-last).abs < @strategy.epsilon
+    end
+  end
   def check_convergence
-    # Простая проверка сходимости - можно расширить
+    return true if process_stagnant?
     false
   end
 
@@ -378,7 +387,9 @@ class ComsolGeneticOptimizer
 
       if cache_compatible?(cache_data)
         @cache = cache_data['cache'] || {}
+        @best_fitness_history = cache_data['best_fitness_history'] || []  # Загружаем историю лучших значений
         @logger.log("Загружен кэш: #{@cache.size} записей")
+        @logger.log("Загружена история фитнес-функции: #{@best_fitness_history.size} эпох") if @best_fitness_history.any?
       else
         @logger.log("Кэш несовместим, начинаем с пустого")
       end
@@ -414,6 +425,7 @@ class ComsolGeneticOptimizer
       maxs: @maxs,
       comsol_file: @config.comsol_file,
       methodcall: @config.method_call,
+      best_fitness_history: @best_fitness_history,
       cache: @cache
     }
 
