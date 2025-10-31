@@ -1,0 +1,26 @@
+{
+  "strategy": {
+      "max_generations": 50,
+      "population_size": 30,
+      "crossover_prob": 0.8,
+      "mutation_prob": 0.3,
+      "tournament_size": 3,
+      "elite_count": 3,
+      "epsilon": 1e-6,
+      "max_stagnant_epochs": 20
+  },
+  "parameters": {
+    "mins": [0.1, 0.0],
+    "maxs": [0.5, 0.8],
+    "names": ["p", "b"]
+  },
+  "comsol": {
+    "file": "opt_bar.mph",
+    "method_call": "target_function",
+    "work_dir": "work_dir",
+    "silent_output": true
+  },
+  "output": {
+    "cache_file": "optimization_cache.json"
+  }
+}
