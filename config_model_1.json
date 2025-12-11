@@ -1,0 +1,26 @@
+{
+  "strategy": {
+      "max_generations": 20,
+      "population_size": 20,
+      "crossover_prob": 0.8,
+      "mutation_prob": 0.1,
+      "tournament_size": 3,
+      "elite_count": 2,
+      "epsilon": 1e-6,
+      "max_stagnant_epochs": 20
+  },
+  "parameters": {
+    "mins": [0.0, 0.0001, 0.004, 0.004],
+    "maxs": [0.8, 0.0005, 0.006, 0.006],
+    "names": ["b", "wm", "cy", "cz"]
+  },
+  "comsol": {
+    "file": "model_1_opt.mph",
+    "method_call": "target_function",
+    "work_dir": "work_dir",
+    "silent_output": false
+  },
+  "output": {
+    "cache_file": "model_1_opt_cache.json"
+  }
+}
