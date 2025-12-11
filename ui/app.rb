@@ -83,6 +83,5 @@ get '/cache/:cache_id' do
     points: points,
     best_fitness_history: cache.best_fitness_history || [] # <--- добавлено
   }
-
   result.to_json
 end
