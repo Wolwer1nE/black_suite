@@ -1,0 +1,77 @@
+{
+  "ScriptInfo": {
+    "session": "tmp1",
+    "taskName": "my task",
+    "blackSuiteTaskType": "FormOptimizationBS"
+  },
+
+  "DataFormOptimizationBS": {
+    "DataModel": {
+      "mesh": null,
+      "materials": [
+        {
+          "name": "PZT",
+          "density": 7500,
+          "c": [
+            [ 1.38999e+011, 7.78366e+010, 7.42836e+010, 0, 0, 0 ],
+            [ 7.78366e+010, 1.38999e+011, 7.42836e+010, 0, 0, 0 ],
+            [ 7.42836e+010, 7.42836e+010, 1.15412e+011, 0, 0, 0 ],
+            [ 0, 0, 0, 2.5641e+010, 0, 0 ],
+            [ 0, 0, 0, 0, 2.5641e+010, 0 ],
+            [ 0, 0, 0, 0, 0, 3.0581e+010 ]
+          ],
+          "g": [
+            [ 6460E-12, 0, 0 ],
+            [ 0, 6460E-12, 0 ],
+            [ 0, 0, 5620E-12 ]
+          ],
+          "e": [
+            [ 0, 0, 0, 0, 12.7179, 0 ],
+            [ 0, 0, 0, 12.7179, 0, 0 ],
+            [ -5.20279, -5.20279, 15.0804, 0, 0, 0 ]
+          ]
+        },
+        {
+          "name": "Air",
+          "density": 1,
+          "c": [
+            [ 1.38999e+008, 7.78366e+007, 7.42836e+007, 0, 0, 0 ],
+            [ 7.78366e+007, 1.38999e+008, 7.42836e+007, 0, 0, 0 ],
+            [ 7.42836e+007, 7.42836e+007, 1.15412e+008, 0, 0, 0 ],
+            [ 0, 0, 0, 2.5641e+007, 0, 0 ],
+            [ 0, 0, 0, 0, 2.5641e+007, 0 ],
+            [ 0, 0, 0, 0, 0, 3.0581e+007 ]
+          ],
+          "g": [
+            [ 1, 0, 0 ],
+            [ 0, 1, 0 ],
+            [ 0, 0, 1 ]
+          ],
+          "e": [
+            [ 0, 0, 0, 0, 0, 0 ],
+            [ 0, 0, 0, 0, 0, 0 ],
+            [ 0, 0, 0, 0, 0, 0 ]
+          ]
+        }
+      ],
+      "boundaryConditions": [
+        "x = 0, ux = 0;\n x = 0, uy = 0;\n PointLoad(0.1,0.01,0,1000);\n y = 0, Fy = 0;\n; y = 0.02, Fy = 0;\n x = 0.1, Fy = 0;\n",
+        "x = 0, ux = 0;\n x = 0, uy = 0;\n PointLoad(0.1,0.01,0,-1000);\n y = 0, Fy = 0;\n; y = 0.02, Fy = 0;\n x = 0.1, Fy = 0;\n"
+      ],
+
+      "variables": ":ux, :uy",
+      "elementData": {
+        "elementType": ":triangle",
+        "elementOrder": 2
+      }
+    },
+    "materialToOptimizationIndex": [ 0 ],
+    "materialToRemoveIndex": 1,
+    "shiftCoefficients": null,
+    "normals": null,
+    "goal": {
+      "goalName": "MisesProbe",
+      "isMinimising": true
+    }
+  }
+}

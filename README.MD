@@ -8,11 +8,41 @@
 bundle install
 ```
 
+## Скрипты оптимизации
+
+### 1. Параметрическая оптимизация (COMSOL)
+
 Запуск из каталога black_suite:
 
 ```bash
 ruby comsol_optimization.rb config.json
 ```
+
+### 2. Оптимизация формы (CMA-ES)
+
+Оптимизация формы МКЭ через движение узлов по нормалям:
+
+```bash
+ruby shape_optimization.rb <mesh_file> [options]
+```
+
+**Опции:**
+- `--session NAME` — имя сессии
+- `--sigma FLOAT` — начальный размер шага CMA-ES (по умолчанию: 0.3)
+- `--max-evals INT` — максимум вычислений fitness (по умолчанию: 1000)
+- `--max-gen INT` — максимум поколений (по умолчанию: 500)
+- `--target FLOAT` — целевое значение fitness для остановки
+
+**Пример:**
+```bash
+ruby shape_optimization.rb work_dir/meshes/rod4.nas --sigma 0.2 --max-evals 500
+```
+
+**Как работает:**
+1. Извлечение границ смещений через `acli bs-shift-boundary`
+2. Запуск CMA-ES оптимизации
+3. Каждое вычисление fitness: вызов `bs-form-opt` с текущими коэффициентами
+4. Результаты сохраняются в `data/<session>/`
 
 ## Конфигурационный файл
 ```
