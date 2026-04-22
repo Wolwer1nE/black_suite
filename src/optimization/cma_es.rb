@@ -199,10 +199,18 @@ class CmaEs
 
   # Оценка fitness для популяции
   def evaluate_population(population)
-    population.map do |individual|
-      @evaluations += 1
-      params = denormalize(individual)
-      @fitness_function.call(params.to_a)
+    @evaluations += population.size
+    
+    # Денормализуем всю популяцию
+    denormalized_population = population.map { |ind| denormalize(ind).to_a }
+    
+    # Проверяем, поддерживает ли fitness-функция пакетную оценку
+    if @fitness_function.respond_to?(:evaluate_batch)
+      # Используем пакетную оценку (параллельно)
+      @fitness_function.evaluate_batch(denormalized_population)
+    else
+      # Последовательная оценка (обратная совместимость)
+      denormalized_population.map { |params| @fitness_function.call(params) }
     end
   end
 

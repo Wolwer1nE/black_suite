@@ -7,6 +7,7 @@
 require_relative 'src/shape_optimization_config'
 require_relative 'src/boundary_shift_extractor'
 require_relative 'src/form_optimization_fitness'
+require_relative 'src/parallel_form_optimization_fitness'
 require_relative 'src/optimization/cma_es'
 require_relative 'src/simple_logger'
 
@@ -22,6 +23,8 @@ def print_usage
   puts "  --max-evals INT    Максимум вычислений fitness (по умолчанию: 1000)"
   puts "  --max-gen INT      Максимум поколений (по умолчанию: 500)"
   puts "  --target FLOAT     Целевое значение fitness для остановки"
+  puts "  --workers INT      Количество параллельных процессов acli (по умолчанию: 8)"
+  puts "  --no-parallel      Отключить параллельное выполнение"
   puts "  --help             Показать эту справку"
   puts ""
   puts "Пример:"
@@ -35,7 +38,9 @@ def parse_options(args)
     sigma: 0.3,
     max_evaluations: 1000,
     max_generations: 500,
-    target_fitness: nil
+    target_fitness: nil,
+    workers: 8,
+    parallel: true
   }
 
   i = 0
@@ -59,6 +64,12 @@ def parse_options(args)
     when '--target'
       options[:target_fitness] = args[i + 1].to_f
       i += 2
+    when '--workers'
+      options[:workers] = args[i + 1].to_i
+      i += 2
+    when '--no-parallel'
+      options[:parallel] = false
+      i += 1
     else
       if options[:mesh_file].nil?
         options[:mesh_file] = args[i]
@@ -93,6 +104,9 @@ def main
   puts "  max_evaluations: #{options[:max_evaluations]}"
   puts "  max_generations: #{options[:max_generations]}"
   puts "  target_fitness: #{options[:target_fitness] || 'не задан'}"
+  puts "Параллелизация:"
+  puts "  enabled: #{options[:parallel]}"
+  puts "  workers: #{options[:workers]}" if options[:parallel]
   puts "=" * 70
 
   # 1. Инициализация конфигурации
@@ -116,7 +130,13 @@ def main
   puts "=" * 70
 
   # 3. Инициализация fitness-функции
-  fitness = FormOptimizationFitness.new(config)
+  if options[:parallel]
+    fitness = ParallelFormOptimizationFitness.new(config, max_workers: options[:workers])
+    puts "\nИспользуется параллельная оценка fitness (#{options[:workers]} потоков)"
+  else
+    fitness = FormOptimizationFitness.new(config)
+    puts "\nИспользуется последовательная оценка fitness"
+  end
 
   # 4. Создание и запуск CMA-ES
   logger = SimpleLogger.new
