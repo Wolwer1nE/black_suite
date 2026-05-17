@@ -2,11 +2,14 @@ require 'set'
 require 'json'
 
 class Mesh
-  attr_reader :nodes, :elements
+  NUMBER_PATTERN = /[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/
+
+  attr_reader :nodes, :elements, :normals
 
   def initialize
     @nodes = {}      # id => [x,y,z]
-    @elements = {}   # id => { nodes: [nid,...], centroid: [x,y,z], neighbors: [eid,...] }
+    @elements = {}   # id => { nodes: [nid,...], centroid: [x,y,z], neighbors: [eid,...], type:, body: }
+    @normals = {}    # node_id => [nx, ny, nz]
   end
 
   # Load mesh from a .nas file path
@@ -15,75 +18,61 @@ class Mesh
 
     File.foreach(path) do |line|
       line = line.chomp
-      next if line.strip.empty?
+      stripped = line.strip
+      next if stripped.empty? || stripped.start_with?('$')
 
-      if line =~ /^GRID\b/i
-        # Extract node id and 3 coordinate floats from the line
-        ints = line.scan(/\b\d+\b/).map(&:to_i)
-        # first integer after GRID is node id
-        # If line contains many ints (rare), find the first integer after the GRID keyword
-        # We'll pick the first integer occurrence as node id
-        if ints.any?
-          node_id = ints[0]
-        else
-          next
-        end
+      case stripped
+      when /^GRID\b/i
+        numbers = line.scan(NUMBER_PATTERN)
+        next if numbers.size < 4
 
-        # Extract floats (handles concatenated floats like 0.000000.0020920.002214)
-        floats = line.scan(/-?\d*\.\d+(?:[eE][+-]?\d+)?/).map(&:to_f)
-        if floats.size >= 3
-          coords = floats[0,3]
-        else
-          # fallback: try to parse tokens after the id
-          tokens = line.split
-          coords = []
-          tokens.each do |t|
-            begin
-              f = Float(t)
-              coords << f
-            rescue ArgumentError
-              next
-            end
-            break if coords.size >= 3
-          end
-        end
-
-        if coords && coords.size == 3
-          mesh.nodes[node_id] = coords
-        else
-          warn "WARN: couldn't parse coords for GRID #{node_id} in line: #{line[0..80]}"
-        end
-
-      elsif line =~ /^CTETRA\b/i
-        ints = line.scan(/\b\d+\b/).map(&:to_i)
-        next if ints.empty?
-        elem_id = ints[0]
-        # Support CTETRA lines with optional PID (property id / body number).
-        # Common layouts:
-        # CTETRA, eid, pid, n1, n2, n3, n4  -> ints.size >= 6
-        # CTETRA, eid, n1, n2, n3, n4      -> ints.size == 5
-        if ints.size >= 6
-          pid = ints[1]
-          node_ids = ints.last(4)
-          mesh.elements[elem_id] = { nodes: node_ids, body: pid }
-        elsif ints.size == 5
-          node_ids = ints.last(4)
-          mesh.elements[elem_id] = { nodes: node_ids }
-        else
-          warn "WARN: CTETRA line has insufficient ints: #{line}"
-        end
+        node_id = numbers[0].to_i
+        coords = numbers[1, 3].map(&:to_f)
+        mesh.nodes[node_id] = coords
+      when /^CTRIA3\b/i
+        mesh.parse_element_line(line, :triangle, 3)
+      when /^CTETRA\b/i
+        mesh.parse_element_line(line, :tetrahedron, 4)
       end
     end
 
-    # Compute centroids
-    mesh.elements.each do |eid, data|
+    mesh.finalize!
+
+    mesh
+  end
+
+  def self.load_normals(path)
+    normals = {}
+
+    File.foreach(path) do |line|
+      stripped = line.strip
+      next if stripped.empty? || stripped.start_with?('$')
+
+      tokens = stripped.split
+      next if tokens.size < 4
+
+      node_id = tokens[0].to_i
+      normals[node_id] = tokens[1, 3].map(&:to_f)
+    end
+
+    normals
+  end
+
+  def load_normals!(path)
+    @normals = self.class.load_normals(path)
+    self
+  end
+
+  def finalize!
+    @elements.each do |eid, data|
       node_ids = data[:nodes]
-      coords = node_ids.map { |nid| mesh.nodes[nid] }
+      coords = node_ids.map { |nid| @nodes[nid] }
       if coords.any? && coords.all?
-        # all node coords present
         sx = sy = sz = 0.0
         coords.each do |c|
-          sx += c[0]; sy += c[1]; sz += c[2]
+          sx += c[0]
+          sy += c[1]
+          sz += c[2]
         end
         n = coords.size.to_f
         data[:centroid] = [sx / n, sy / n, sz / n]
@@ -91,35 +80,87 @@ class Mesh
         data[:centroid] = nil
         warn "WARN: missing node coordinates for element #{eid}. Node ids: #{node_ids.inspect}"
       end
-      data[:neighbors] = []
+      data[:neighbors] ||= []
     end
 
-    # Build face map to find shared faces -> neighbors
-    face_map = Hash.new { |h,k| h[k] = [] }  # face_key => [element ids]
+    adjacency_map = Hash.new { |h, k| h[k] = [] }
 
-
-
-    mesh.elements.each do |eid, data|
+    @elements.each do |eid, data|
       nodes = data[:nodes]
-      # For tetrahedron, faces are combinations of 3 nodes (4 faces)
-      faces = nodes.combination(3).map { |face_nodes| face_nodes.sort }
-      faces.each do |f|
-        key = f.join('_')
-        face_map[key] << eid
+      side_size = nodes.size - 1
+      next if side_size <= 0
+
+      nodes.combination(side_size).each do |face_nodes|
+        adjacency_map[face_nodes.sort.join('_')] << eid
       end
     end
 
-    # Populate neighbors
-    face_map.each do |_, eids|
-      if eids.size > 1
-        eids.each do |eid|
-          others = eids - [eid]
-          mesh.elements[eid][:neighbors] |= others
-        end
+    adjacency_map.each_value do |eids|
+      next unless eids.size > 1
+
+      eids.each do |eid|
+        @elements[eid][:neighbors] |= (eids - [eid])
       end
     end
 
-    mesh
+    self
+  end
+
+  def parse_element_line(line, type, node_count)
+    ints = line.strip.split.drop(1).map(&:to_i)
+    if ints.size < node_count + 1
+      warn "WARN: #{type} line has insufficient ints: #{line}"
+      return
+    end
+
+    elem_id = ints[0]
+    body = ints[1] if ints.size >= node_count + 2
+    node_ids = ints.last(node_count)
+
+    @elements[elem_id] = {
+      nodes: node_ids,
+      body: body,
+      type: type,
+      neighbors: []
+    }
+  end
+
+  def spatial_dimension(epsilon = 1e-12)
+    return 0 if @nodes.empty?
+
+    axis_has_values = [false, false, false]
+    @nodes.each_value do |coords|
+      coords.each_with_index do |value, axis|
+        axis_has_values[axis] ||= value.abs > epsilon
+      end
+    end
+
+    [axis_has_values.count(true), 1].max
+  end
+
+  def bounds
+    return nil if @nodes.empty?
+
+    mins = @nodes.values.first.dup
+    maxs = @nodes.values.first.dup
+
+    @nodes.each_value do |coords|
+      coords.each_with_index do |value, axis|
+        mins[axis] = [mins[axis], value].min
+        maxs[axis] = [maxs[axis], value].max
+      end
+    end
+
+    {
+      min: mins,
+      max: maxs,
+      size: mins.each_index.map { |axis| maxs[axis] - mins[axis] },
+      center: mins.each_index.map { |axis| (mins[axis] + maxs[axis]) / 2.0 }
+    }
+  end
+
+  def element_types
+    @elements.values.map { |element| element[:type] }.uniq
   end
 
   # Save elements and nodes to JSON file
@@ -131,9 +172,11 @@ class Mesh
           nodes: v[:nodes],
           centroid: v[:centroid],
           neighbors: v[:neighbors],
-          body: v[:body]
+          body: v[:body],
+          type: v[:type]
         }
-      end
+      end,
+      normals: @normals
     }
     File.write(path, JSON.pretty_generate(out))
   end
@@ -146,6 +189,7 @@ class Mesh
     # Неглубокое копирование узлов и глубокое копирование элементов
     new_mesh = Mesh.new
     new_mesh.instance_variable_set(:@nodes, @nodes.dup)
+    new_mesh.instance_variable_set(:@normals, @normals.transform_values(&:dup))
 
     new_elements = {}
     @elements.each do |eid, data|
@@ -153,7 +197,8 @@ class Mesh
         nodes: data[:nodes].dup,
         centroid: data[:centroid] && data[:centroid].dup,
         neighbors: data[:neighbors].dup,
-        body: data[:body]
+        body: data[:body],
+        type: data[:type]
       }
     end
     new_mesh.instance_variable_set(:@elements, new_elements)
@@ -190,7 +235,12 @@ class Mesh
         e = @elements[eid]
         nodes = e[:nodes]
         pid = e[:body] || 0
-        f.puts sprintf('%-8s%8d%8d%8d%8d%8d%8d', 'CTETRA', eid, pid, nodes[0], nodes[1], nodes[2], nodes[3])
+        case e[:type]
+        when :triangle
+          f.puts sprintf('%-8s%8d%8d%8d%8d%8d', 'CTRIA3', eid, pid, nodes[0], nodes[1], nodes[2])
+        else
+          f.puts sprintf('%-8s%8d%8d%8d%8d%8d%8d', 'CTETRA', eid, pid, nodes[0], nodes[1], nodes[2], nodes[3])
+        end
       end
 
       bodies = @elements.values.map { |v| v[:body] }.compact.uniq.sort

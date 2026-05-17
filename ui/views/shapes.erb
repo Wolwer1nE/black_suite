@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Просмотр сеток и нормалей</title>
+  <link rel="stylesheet" href="/lib/bootstrap.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-4">
+    <div>
+      <h2 class="mb-1">Просмотр сеток и нормалей</h2>
+      <p class="text-muted mb-0">Загрузка фигур из <code>data/shapes</code> с раскраской по телам и отображением векторов нормалей.</p>
+    </div>
+    <a href="/" class="btn btn-outline-secondary">← К результатам оптимизации</a>
+  </div>
+
+  <div class="row g-4">
+    <aside class="col-lg-3">
+      <div class="card h-100 shape-sidebar-card">
+        <div class="card-header">
+          <h5 class="mb-0">Доступные фигуры</h5>
+        </div>
+        <div class="card-body shape-sidebar-body">
+          <div id="shape-list" class="shape-list">
+            <div class="text-center text-muted py-4">
+              <div class="spinner-border" role="status"></div>
+              <p class="mt-2 mb-0">Сканирование папок...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="col-lg-9">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <h5 class="mb-0">Параметры отображения</h5>
+          <span id="shape-title" class="badge text-bg-light">Фигура не выбрана</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-lg-3 col-md-6">
+              <label for="normal-scale" class="form-label"><strong>Масштаб нормалей</strong></label>
+              <input id="normal-scale" type="range" class="form-range" min="0.2" max="8" step="0.2" value="1">
+              <div class="small text-muted">Текущее значение: <span id="normal-scale-value">1.0×</span></div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-normals" checked>
+                <label class="form-check-label" for="toggle-normals">Показывать нормали</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-normal-nodes" checked>
+                <label class="form-check-label" for="toggle-normal-nodes">Показывать узлы нормалей</label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="toggle-edges" checked>
+                <label class="form-check-label" for="toggle-edges">Показывать рёбра</label>
+              </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="d-grid gap-2 viewer-action-buttons">
+                <button type="button" id="fit-camera" class="btn btn-outline-primary">Вписать в кадр</button>
+                <button type="button" id="show-all-bodies" class="btn btn-outline-secondary btn-sm">Показать все тела</button>
+              </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="toggle-transparent-3d">
+                <label class="form-check-label" for="toggle-transparent-3d">Полупрозрачный режим 3D</label>
+              </div>
+              <div id="transparency-hint" class="small text-muted mb-2">Для объёмных сеток проще заглянуть внутрь модели.</div>
+              <div id="shape-meta" class="small text-muted">Выберите фигуру слева, чтобы загрузить данные.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card viewer-card">
+        <div class="card-body">
+          <div id="viewer-message" class="viewer-message text-muted">Подготовка сцены...</div>
+          <div id="shape-canvas" class="shape-canvas"></div>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <div class="col-md-7">
+          <div class="card h-100">
+            <div class="card-header">
+              <h5 class="mb-0">Сводка по фигуре</h5>
+            </div>
+            <div class="card-body">
+              <div id="shape-stats" class="text-muted">Пока пусто — но ненадолго.</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-5 d-flex flex-column gap-4">
+          <div class="card">
+            <div class="card-header">
+              <h5 class="mb-0">Выбранный узел</h5>
+            </div>
+            <div class="card-body">
+              <div id="selected-node-info" class="selected-node-info text-muted">Кликните по шарику узла с нормалью, чтобы увидеть его номер, координаты и вектор нормали.</div>
+            </div>
+          </div>
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+              <h5 class="mb-0">Цвета тел</h5>
+              <button type="button" id="hide-all-bodies" class="btn btn-light btn-sm body-toolbar-btn">Скрыть все</button>
+            </div>
+            <div class="card-body">
+              <div id="body-legend" class="body-legend text-muted">Цвета появятся после загрузки фигуры.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="/lib/three.min.js"></script>
+<script src="/lib/OrbitControls.js"></script>
+<script src="/mesh_viewer.js"></script>
+</body>
+</html>

@@ -2,17 +2,31 @@ require 'sinatra'
 require 'json'
 require 'fileutils'
 require_relative 'src/optimization_cache_dto'
+require_relative 'src/shape_repository'
+
+ROOT_DIR = File.expand_path('..', __dir__)
+
+def cache_manager
+  OptimizationCacheManager.new(File.join(ROOT_DIR, 'work_dir'))
+end
+
+def shape_repository
+  ShapeRepository.new(File.join(ROOT_DIR, 'data', 'shapes'))
+end
 
 get '/' do
   erb :index
+end
+
+get '/shapes' do
+  erb :shapes
 end
 
 # Получить список всех кэшей с метаданными
 get '/caches' do
   content_type :json
 
-  work_cache_manager = OptimizationCacheManager.new('../work_dir')
-  caches = work_cache_manager.scan_and_load_caches
+  caches = cache_manager.scan_and_load_caches
 
   result = caches.map do |cache_info|
     cache = cache_info[:cache]
@@ -40,8 +54,7 @@ get '/cache/:cache_id' do
   content_type :json
   cache_id = params[:cache_id]
 
-  work_cache_manager = OptimizationCacheManager.new('../work_dir')
-  caches = work_cache_manager.scan_and_load_caches
+  caches = cache_manager.scan_and_load_caches
 
   cache_info = caches.find do |info|
     File.basename(info[:file_path], '.json') == cache_id
@@ -84,4 +97,18 @@ get '/cache/:cache_id' do
     best_fitness_history: cache.best_fitness_history || [] # <--- добавлено
   }
   result.to_json
+end
+
+get '/api/shapes' do
+  content_type :json
+  shape_repository.scan_shapes.to_json
+end
+
+get '/api/shapes/:shape_id' do
+  content_type :json
+
+  shape = shape_repository.load_shape(params[:shape_id])
+  halt 404, { error: 'Фигура не найдена' }.to_json unless shape
+
+  shape.to_json
 end
