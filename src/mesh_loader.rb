@@ -51,7 +51,7 @@ class Mesh
       tokens = stripped.split
       next if tokens.size < 4
 
-      node_id = tokens[0].to_i
+      node_id = tokens[0].to_i + 1
       normals[node_id] = tokens[1, 3].map(&:to_f)
     end
 
