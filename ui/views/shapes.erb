@@ -16,8 +16,8 @@
     <a href="/" class="btn btn-outline-secondary">← К результатам оптимизации</a>
   </div>
 
-  <div class="row g-4">
-    <aside class="col-lg-3">
+  <div class="row g-4 shape-dashboard-layout">
+    <aside class="col-xl-2 col-lg-3 shape-layout-sidebar">
       <div class="card h-100 shape-sidebar-card">
         <div class="card-header">
           <h5 class="mb-0">Доступные фигуры</h5>
@@ -33,181 +33,183 @@
       </div>
     </aside>
 
-    <section class="col-lg-9">
-      <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
-          <h5 class="mb-0">Параметры отображения</h5>
-          <span id="shape-title" class="badge text-bg-light">Фигура не выбрана</span>
-        </div>
-        <div class="card-body">
-          <div class="row g-3 align-items-end">
-            <div class="col-lg-3 col-md-6">
-              <label for="normal-scale" class="form-label"><strong>Масштаб нормалей</strong></label>
-              <input id="normal-scale" type="range" class="form-range" min="0.2" max="8" step="0.2" value="1">
-              <div class="small text-muted">Текущее значение: <span id="normal-scale-value">1.0×</span></div>
-            </div>
-            <div class="col-lg-3 col-md-6">
-              <label for="displacement-scale" class="form-label"><strong>Масштаб смещений</strong></label>
-              <input id="displacement-scale" type="range" class="form-range" min="0" max="8" step="0.1" value="1">
-              <div class="small text-muted">Текущее значение: <span id="displacement-scale-value">1.0×</span></div>
-              <div class="form-check form-switch mt-2">
-                <input class="form-check-input" type="checkbox" id="toggle-displacements">
-                <label class="form-check-label" for="toggle-displacements">Применять смещения из файла</label>
+    <section class="col-xl-3 col-lg-4 shape-controls-column">
+      <div class="d-flex flex-column gap-4 shape-controls-stack">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0">Настройки</h5>
+            <span id="shape-title" class="badge text-bg-light">Фигура не выбрана</span>
+          </div>
+          <div class="card-body shape-settings-card-body">
+            <div class="row g-3 align-items-end">
+              <div class="col-12">
+                <div id="shape-meta" class="small text-muted">Выберите фигуру слева, чтобы загрузить данные.</div>
               </div>
-            </div>
-            <div class="col-lg-3 col-md-6">
-              <div class="form-check form-switch mb-2">
-                <input class="form-check-input" type="checkbox" id="toggle-normals" checked>
-                <label class="form-check-label" for="toggle-normals">Показывать нормали</label>
+              <div class="col-12">
+                <div id="shape-stats" class="text-muted">Пока пусто — но ненадолго.</div>
               </div>
-              <div class="form-check form-switch mb-2">
-                <input class="form-check-input" type="checkbox" id="toggle-normal-nodes" checked>
-                <label class="form-check-label" for="toggle-normal-nodes">Показывать узлы нормалей</label>
+              <div class="col-12">
+                <label for="normal-scale" class="form-label"><strong>Масштаб нормалей</strong></label>
+                <input id="normal-scale" type="range" class="form-range" min="0.2" max="8" step="0.2" value="1">
+                <div class="small text-muted">Текущее значение: <span id="normal-scale-value">1.0×</span></div>
               </div>
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="toggle-edges" checked>
-                <label class="form-check-label" for="toggle-edges">Показывать рёбра</label>
-              </div>
-            </div>
-            <div class="col-lg-3 col-md-6">
-              <div class="d-grid gap-2 viewer-action-buttons">
-                <button type="button" id="fit-camera" class="btn btn-outline-primary">Вписать в кадр</button>
-                <button type="button" id="show-all-bodies" class="btn btn-outline-secondary btn-sm">Показать все тела</button>
-              </div>
-            </div>
-            <div class="col-lg-3 col-md-6">
-              <div class="form-check form-switch mb-2">
-                <input class="form-check-input" type="checkbox" id="toggle-transparent-3d">
-                <label class="form-check-label" for="toggle-transparent-3d">Полупрозрачный режим 3D</label>
-              </div>
-              <div id="transparency-hint" class="small text-muted mb-2">Для объёмных сеток проще заглянуть внутрь модели.</div>
-              <div id="shape-meta" class="small text-muted">Выберите фигуру слева, чтобы загрузить данные.</div>
-            </div>
-            <div class="col-12">
-              <div class="smoothing-controls">
-                <div>
-                  <div class="form-label mb-1"><strong>Файл смещений для визуализации</strong></div>
-                  <div id="displacement-status" class="small text-muted">Выберите фигуру, чтобы увидеть наличие файла смещений.</div>
+              <div class="col-12">
+                <label for="displacement-scale" class="form-label"><strong>Масштаб смещений</strong></label>
+                <input id="displacement-scale" type="range" class="form-range" min="0" max="8" step="0.1" value="1">
+                <div class="small text-muted">Текущее значение: <span id="displacement-scale-value">1.0×</span></div>
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" type="checkbox" id="toggle-displacements">
+                  <label class="form-check-label" for="toggle-displacements">Применять смещения из файла</label>
                 </div>
-                <div class="row g-2 align-items-end smoothing-inputs">
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="smooth-iterations" class="form-label small mb-1">Итерации</label>
-                    <input id="smooth-iterations" type="number" class="form-control form-control-sm" min="1" step="1" value="3">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="smooth-lambda" class="form-label small mb-1">λ</label>
-                    <input id="smooth-lambda" type="number" class="form-control form-control-sm" step="0.01" value="0.25">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="smooth-mu" class="form-label small mb-1">μ</label>
-                    <input id="smooth-mu" type="number" class="form-control form-control-sm" step="0.01" value="-0.26">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="smooth-max-step" class="form-label small mb-1">max step</label>
-                    <input id="smooth-max-step" type="number" class="form-control form-control-sm" step="0.0001" value="0.0005">
-                  </div>
-                  <div class="col-12 col-lg-4 d-grid">
-                    <button type="button" id="generate-displacements" class="btn btn-primary btn-sm">Пересчитать и сохранить смещения</button>
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="toggle-normals" checked>
+                  <label class="form-check-label" for="toggle-normals">Показывать нормали</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="toggle-normal-nodes" checked>
+                  <label class="form-check-label" for="toggle-normal-nodes">Показывать узлы нормалей</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="toggle-edges" checked>
+                  <label class="form-check-label" for="toggle-edges">Показывать рёбра</label>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="toggle-transparent-3d">
+                  <label class="form-check-label" for="toggle-transparent-3d">Полупрозрачный режим 3D</label>
+                </div>
+                <div id="transparency-hint" class="small text-muted mt-2">Для объёмных сеток проще заглянуть внутрь модели.</div>
+              </div>
+              <div class="col-12">
+                <div class="d-grid gap-2 viewer-action-buttons">
+                  <button type="button" id="fit-camera" class="btn btn-outline-primary">Вписать в кадр</button>
+                  <div class="d-grid grid-actions-pair gap-2">
+                    <button type="button" id="show-all-bodies" class="btn btn-outline-secondary btn-sm">Показать все тела</button>
+                    <button type="button" id="hide-all-bodies" class="btn btn-outline-secondary btn-sm body-toolbar-btn">Скрыть все</button>
                   </div>
                 </div>
               </div>
-            </div>
-            <div class="col-12">
-              <div class="optimization-controls">
-                <div>
-                  <div class="form-label mb-1"><strong>Оптимизация формы (CMA-ES)</strong></div>
-                  <div id="optimization-status" class="small text-muted">Выберите фигуру и задайте параметры, чтобы запустить оптимизацию формы прямо из UI.</div>
-                </div>
-                <div class="row g-2 align-items-end optimization-inputs">
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="opt-sigma" class="form-label small mb-1">sigma</label>
-                    <input id="opt-sigma" type="number" class="form-control form-control-sm" step="0.01" min="0.01" value="0.3">
+              <div class="col-12">
+                <div class="smoothing-controls">
+                  <div>
+                    <div class="form-label mb-1"><strong>Файл смещений для визуализации</strong></div>
+                    <div id="displacement-status" class="small text-muted">Выберите фигуру, чтобы увидеть наличие файла смещений.</div>
                   </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="opt-max-evals" class="form-label small mb-1">max evals</label>
-                    <input id="opt-max-evals" type="number" class="form-control form-control-sm" step="1" min="1" value="1000">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="opt-max-gen" class="form-label small mb-1">max gen</label>
-                    <input id="opt-max-gen" type="number" class="form-control form-control-sm" step="1" min="1" value="500">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="opt-workers" class="form-label small mb-1">workers</label>
-                    <input id="opt-workers" type="number" class="form-control form-control-sm" step="1" min="1" value="8">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="opt-target" class="form-label small mb-1">target</label>
-                    <input id="opt-target" type="number" class="form-control form-control-sm" step="0.000001" placeholder="опционально">
-                  </div>
-                  <div class="col-6 col-md-3 col-lg-2">
-                    <label for="opt-session" class="form-label small mb-1">session</label>
-                    <input id="opt-session" type="text" class="form-control form-control-sm" placeholder="авто">
-                  </div>
-                  <div class="col-12 col-lg-3">
-                    <div class="form-check form-switch mt-2">
-                      <input class="form-check-input" type="checkbox" id="opt-parallel" checked>
-                      <label class="form-check-label" for="opt-parallel">Параллельный режим</label>
+                  <div class="row g-2 align-items-end smoothing-inputs">
+                    <div class="col-6">
+                      <label for="smooth-iterations" class="form-label small mb-1">Итерации</label>
+                      <input id="smooth-iterations" type="number" class="form-control form-control-sm" min="1" step="1" value="3">
+                    </div>
+                    <div class="col-6">
+                      <label for="smooth-lambda" class="form-label small mb-1">λ</label>
+                      <input id="smooth-lambda" type="number" class="form-control form-control-sm" step="0.01" value="0.25">
+                    </div>
+                    <div class="col-6">
+                      <label for="smooth-mu" class="form-label small mb-1">μ</label>
+                      <input id="smooth-mu" type="number" class="form-control form-control-sm" step="0.01" value="-0.26">
+                    </div>
+                    <div class="col-6">
+                      <label for="smooth-max-step" class="form-label small mb-1">max step</label>
+                      <input id="smooth-max-step" type="number" class="form-control form-control-sm" step="0.0001" value="0.0005">
+                    </div>
+                    <div class="col-12 d-grid">
+                      <button type="button" id="generate-displacements" class="btn btn-primary btn-sm">Пересчитать и сохранить смещения</button>
                     </div>
                   </div>
-                  <div class="col-12 col-lg-3 d-grid">
-                    <button type="button" id="start-shape-optimization" class="btn btn-success btn-sm">Запустить оптимизацию формы</button>
-                  </div>
                 </div>
-                <div class="optimization-progress-card">
-                  <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
-                    <span id="optimization-progress-label" class="small text-muted">Задача ещё не запущена.</span>
-                    <span id="optimization-progress-meta" class="small text-muted">—</span>
+              </div>
+              <div class="col-12">
+                <div class="optimization-controls">
+                  <div>
+                    <div class="form-label mb-1"><strong>Оптимизация формы (CMA-ES)</strong></div>
+                    <div id="optimization-status" class="small text-muted">Выберите фигуру и задайте параметры, чтобы запустить оптимизацию формы прямо из UI.</div>
                   </div>
-                  <div class="progress" role="progressbar" aria-label="Прогресс оптимизации формы" aria-valuemin="0" aria-valuemax="100">
-                    <div id="optimization-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+                  <div class="row g-2 align-items-end optimization-inputs">
+                    <div class="col-6">
+                      <label for="opt-sigma" class="form-label small mb-1">sigma</label>
+                      <input id="opt-sigma" type="number" class="form-control form-control-sm" step="0.01" min="0.01" value="0.3">
+                    </div>
+                    <div class="col-6">
+                      <label for="opt-max-evals" class="form-label small mb-1">max evals</label>
+                      <input id="opt-max-evals" type="number" class="form-control form-control-sm" step="1" min="1" value="1000">
+                    </div>
+                    <div class="col-6">
+                      <label for="opt-max-gen" class="form-label small mb-1">max gen</label>
+                      <input id="opt-max-gen" type="number" class="form-control form-control-sm" step="1" min="1" value="500">
+                    </div>
+                    <div class="col-6">
+                      <label for="opt-workers" class="form-label small mb-1">workers</label>
+                      <input id="opt-workers" type="number" class="form-control form-control-sm" step="1" min="1" value="8">
+                    </div>
+                    <div class="col-6">
+                      <label for="opt-target" class="form-label small mb-1">target</label>
+                      <input id="opt-target" type="number" class="form-control form-control-sm" step="0.000001" placeholder="опционально">
+                    </div>
+                    <div class="col-6">
+                      <label for="opt-session" class="form-label small mb-1">session</label>
+                      <input id="opt-session" type="text" class="form-control form-control-sm" placeholder="авто">
+                    </div>
+                    <div class="col-12">
+                      <div class="form-check form-switch mt-1">
+                        <input class="form-check-input" type="checkbox" id="opt-parallel" checked>
+                        <label class="form-check-label" for="opt-parallel">Параллельный режим</label>
+                      </div>
+                    </div>
+                    <div class="col-12 d-grid">
+                      <button type="button" id="start-shape-optimization" class="btn btn-success btn-sm">Запустить оптимизацию формы</button>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label class="form-label small mb-1" for="optimization-log">Лог оптимизации</label>
-                  <pre id="optimization-log" class="optimization-log">Лог появится после запуска оптимизации.</pre>
+                  <div class="optimization-progress-card">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
+                      <span id="optimization-progress-label" class="small text-muted">Задача ещё не запущена.</span>
+                      <span id="optimization-progress-meta" class="small text-muted">—</span>
+                    </div>
+                    <div class="progress" role="progressbar" aria-label="Прогресс оптимизации формы" aria-valuemin="0" aria-valuemax="100">
+                      <div id="optimization-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label small mb-1" for="optimization-log">Лог оптимизации</label>
+                    <pre id="optimization-log" class="optimization-log">Лог появится после запуска оптимизации.</pre>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="card viewer-card">
-        <div class="card-body">
+        <div class="card">
+          <div class="card-header">
+            <h5 class="mb-0">Выбранный узел</h5>
+          </div>
+          <div class="card-body">
+            <div id="selected-node-info" class="selected-node-info text-muted">Кликните по шарику узла с нормалью, чтобы увидеть его номер, координаты и вектор нормали.</div>
+          </div>
+        </div>
+
+        <div class="card h-100">
+          <div class="card-header">
+            <h5 class="mb-0">Цвета тел</h5>
+          </div>
+          <div class="card-body">
+            <div id="body-legend" class="body-legend text-muted">Цвета появятся после загрузки фигуры.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="col-xl-7 col-lg-5 shape-viewer-column">
+      <div class="card viewer-card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <div>
+            <h5 class="mb-0">Viewer</h5>
+          </div>
+          <span class="small text-white-50">Управление мышью: вращение, панорама, zoom</span>
+        </div>
+        <div class="card-body viewer-card-body">
           <div id="viewer-message" class="viewer-message text-muted">Подготовка сцены...</div>
           <div id="shape-canvas" class="shape-canvas"></div>
-        </div>
-      </div>
-
-      <div class="row g-4 mt-1">
-        <div class="col-md-7">
-          <div class="card h-100">
-            <div class="card-header">
-              <h5 class="mb-0">Сводка по фигуре</h5>
-            </div>
-            <div class="card-body">
-              <div id="shape-stats" class="text-muted">Пока пусто — но ненадолго.</div>
-            </div>
-          </div>
-        </div>
-        <div class="col-md-5 d-flex flex-column gap-4">
-          <div class="card">
-            <div class="card-header">
-              <h5 class="mb-0">Выбранный узел</h5>
-            </div>
-            <div class="card-body">
-              <div id="selected-node-info" class="selected-node-info text-muted">Кликните по шарику узла с нормалью, чтобы увидеть его номер, координаты и вектор нормали.</div>
-            </div>
-          </div>
-          <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
-              <h5 class="mb-0">Цвета тел</h5>
-              <button type="button" id="hide-all-bodies" class="btn btn-light btn-sm body-toolbar-btn">Скрыть все</button>
-            </div>
-            <div class="card-body">
-              <div id="body-legend" class="body-legend text-muted">Цвета появятся после загрузки фигуры.</div>
-            </div>
-          </div>
         </div>
       </div>
     </section>

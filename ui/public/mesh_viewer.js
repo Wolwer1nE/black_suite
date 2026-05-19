@@ -197,20 +197,8 @@ function renderShapeList(shapes) {
     }
 
     list.innerHTML = shapes.map(shape => `
-        <button type="button" class="shape-list-item" data-shape-id="${shape.id}">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-                <div>
-                    <div class="shape-list-title">${shape.name}</div>
-                    <div class="shape-list-meta">${shape.mesh_file}</div>
-                </div>
-                <span class="badge text-bg-light">${shape.dimension}D</span>
-            </div>
-            <div class="shape-list-stats">
-                ${shape.nodes_count} узлов · ${shape.elements_count} элементов · ${shape.normals_count} нормалей
-            </div>
-            <div class="shape-list-stats">
-                ${shape.has_displacements ? `смещения: ${shape.displacement_file || 'готово'} (${shape.displacement_count || 0})` : 'смещений пока нет'}
-            </div>
+        <button type="button" class="shape-list-item" data-shape-id="${shape.id}" title="${shape.name}">
+            <span class="shape-list-title">${shape.name}</span>
         </button>
     `).join('');
 
