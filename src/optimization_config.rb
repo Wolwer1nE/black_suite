@@ -1,7 +1,7 @@
 require 'json'
 
 class OptimizationConfig
-  attr_reader :strategy, :parameters, :comsol, :output
+  attr_reader :strategy, :parameters, :comsol, :output, :ai
 
   def initialize(config_file)
     @config_data = JSON.parse(File.read(config_file))
@@ -10,12 +10,17 @@ class OptimizationConfig
     @parameters = @config_data['parameters']
     @comsol = @config_data['comsol']
     @output = @config_data['output']
+    @ai = @config_data['ai'] || {}
 
     validate_config
   end
 
   def method
     @strategy['method']
+  end
+
+  def optimizer_method
+    @strategy['method'] || 'genetic'
   end
 
   def max_generations
@@ -74,6 +79,10 @@ class OptimizationConfig
     @output['cache_file']
   end
 
+  def ai_options
+    @ai || {}
+  end
+
   def print_progress?
     @output['print_progress']
   end
@@ -111,6 +120,10 @@ class OptimizationConfig
     required_output = %w[cache_file]
     required_output.each do |key|
       raise "Отсутствует параметр 'output.#{key}'" unless @output[key]
+    end
+
+    if optimizer_method == 'hybrid_ai' && !@ai.is_a?(Hash)
+      raise "Секция 'ai' должна быть объектом JSON для режима hybrid_ai"
     end
   end
 end

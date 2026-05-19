@@ -3,8 +3,10 @@ require 'json'
 require 'fileutils'
 require_relative 'src/optimization_cache_dto'
 require_relative 'src/shape_repository'
+require_relative 'src/shape_optimization_job_manager'
 
 ROOT_DIR = File.expand_path('..', __dir__)
+SHAPE_OPTIMIZATION_JOB_MANAGER = ShapeOptimizationJobManager.new(ROOT_DIR)
 
 def cache_manager
   OptimizationCacheManager.new(File.join(ROOT_DIR, 'work_dir'))
@@ -111,4 +113,77 @@ get '/api/shapes/:shape_id' do
   halt 404, { error: 'Фигура не найдена' }.to_json unless shape
 
   shape.to_json
+end
+
+post '/api/shapes/:shape_id/displacements' do
+  content_type :json
+
+  raw_body = request.body.read
+  request_data = raw_body.empty? ? {} : JSON.parse(raw_body)
+
+  shape = shape_repository.generate_displacements(
+    params[:shape_id],
+    iterations: (request_data['iterations'] || 3).to_i,
+    lambda: (request_data['lambda'] || 0.25).to_f,
+    mu: request_data.key?('mu') && !request_data['mu'].to_s.strip.empty? ? request_data['mu'].to_f : nil,
+    max_step: request_data.key?('max_step') && !request_data['max_step'].to_s.strip.empty? ? request_data['max_step'].to_f : nil
+  )
+
+  halt 404, { error: 'Фигура не найдена' }.to_json unless shape
+
+  status 201
+  shape.to_json
+rescue JSON::ParserError => e
+  halt 400, { error: "Некорректный JSON: #{e.message}" }.to_json
+rescue StandardError => e
+  halt 422, { error: e.message }.to_json
+end
+
+post '/api/shapes/:shape_id/optimization' do
+  content_type :json
+
+  entry = shape_repository.shape_entry(params[:shape_id])
+  halt 404, { error: 'Фигура не найдена' }.to_json unless entry
+
+  raw_body = request.body.read
+  request_data = raw_body.empty? ? {} : JSON.parse(raw_body)
+
+  job = SHAPE_OPTIMIZATION_JOB_MANAGER.start_or_reuse_job(
+    shape_id: params[:shape_id],
+    mesh_path: entry[:mesh_path],
+    options: {
+      session_name: request_data['session_name'],
+      sigma: request_data['sigma'] || 0.3,
+      max_evaluations: request_data['max_evaluations'] || 1000,
+      max_generations: request_data['max_generations'] || 500,
+      target_fitness: request_data.key?('target_fitness') && !request_data['target_fitness'].to_s.strip.empty? ? request_data['target_fitness'].to_f : nil,
+      workers: request_data['workers'] || 8,
+      parallel: request_data.key?('parallel') ? request_data['parallel'] : true
+    }
+  )
+
+  status(job[:reused] ? 200 : 202)
+  job.to_json
+rescue JSON::ParserError => e
+  halt 400, { error: "Некорректный JSON: #{e.message}" }.to_json
+rescue StandardError => e
+  halt 422, { error: e.message }.to_json
+end
+
+get '/api/shapes/:shape_id/optimization/active' do
+  content_type :json
+
+  job = SHAPE_OPTIMIZATION_JOB_MANAGER.active_job_for_shape(params[:shape_id])
+  halt 404, { error: 'Активная оптимизация не найдена' }.to_json unless job
+
+  job.to_json
+end
+
+get '/api/shape-optimization/jobs/:job_id' do
+  content_type :json
+
+  job = SHAPE_OPTIMIZATION_JOB_MANAGER.job_status(params[:job_id])
+  halt 404, { error: 'Задача не найдена' }.to_json unless job
+
+  job.to_json
 end

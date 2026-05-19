@@ -47,6 +47,15 @@
               <div class="small text-muted">Текущее значение: <span id="normal-scale-value">1.0×</span></div>
             </div>
             <div class="col-lg-3 col-md-6">
+              <label for="displacement-scale" class="form-label"><strong>Масштаб смещений</strong></label>
+              <input id="displacement-scale" type="range" class="form-range" min="0" max="8" step="0.1" value="1">
+              <div class="small text-muted">Текущее значение: <span id="displacement-scale-value">1.0×</span></div>
+              <div class="form-check form-switch mt-2">
+                <input class="form-check-input" type="checkbox" id="toggle-displacements">
+                <label class="form-check-label" for="toggle-displacements">Применять смещения из файла</label>
+              </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
               <div class="form-check form-switch mb-2">
                 <input class="form-check-input" type="checkbox" id="toggle-normals" checked>
                 <label class="form-check-label" for="toggle-normals">Показывать нормали</label>
@@ -73,6 +82,91 @@
               </div>
               <div id="transparency-hint" class="small text-muted mb-2">Для объёмных сеток проще заглянуть внутрь модели.</div>
               <div id="shape-meta" class="small text-muted">Выберите фигуру слева, чтобы загрузить данные.</div>
+            </div>
+            <div class="col-12">
+              <div class="smoothing-controls">
+                <div>
+                  <div class="form-label mb-1"><strong>Файл смещений для визуализации</strong></div>
+                  <div id="displacement-status" class="small text-muted">Выберите фигуру, чтобы увидеть наличие файла смещений.</div>
+                </div>
+                <div class="row g-2 align-items-end smoothing-inputs">
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="smooth-iterations" class="form-label small mb-1">Итерации</label>
+                    <input id="smooth-iterations" type="number" class="form-control form-control-sm" min="1" step="1" value="3">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="smooth-lambda" class="form-label small mb-1">λ</label>
+                    <input id="smooth-lambda" type="number" class="form-control form-control-sm" step="0.01" value="0.25">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="smooth-mu" class="form-label small mb-1">μ</label>
+                    <input id="smooth-mu" type="number" class="form-control form-control-sm" step="0.01" value="-0.26">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="smooth-max-step" class="form-label small mb-1">max step</label>
+                    <input id="smooth-max-step" type="number" class="form-control form-control-sm" step="0.0001" value="0.0005">
+                  </div>
+                  <div class="col-12 col-lg-4 d-grid">
+                    <button type="button" id="generate-displacements" class="btn btn-primary btn-sm">Пересчитать и сохранить смещения</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="optimization-controls">
+                <div>
+                  <div class="form-label mb-1"><strong>Оптимизация формы (CMA-ES)</strong></div>
+                  <div id="optimization-status" class="small text-muted">Выберите фигуру и задайте параметры, чтобы запустить оптимизацию формы прямо из UI.</div>
+                </div>
+                <div class="row g-2 align-items-end optimization-inputs">
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="opt-sigma" class="form-label small mb-1">sigma</label>
+                    <input id="opt-sigma" type="number" class="form-control form-control-sm" step="0.01" min="0.01" value="0.3">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="opt-max-evals" class="form-label small mb-1">max evals</label>
+                    <input id="opt-max-evals" type="number" class="form-control form-control-sm" step="1" min="1" value="1000">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="opt-max-gen" class="form-label small mb-1">max gen</label>
+                    <input id="opt-max-gen" type="number" class="form-control form-control-sm" step="1" min="1" value="500">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="opt-workers" class="form-label small mb-1">workers</label>
+                    <input id="opt-workers" type="number" class="form-control form-control-sm" step="1" min="1" value="8">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="opt-target" class="form-label small mb-1">target</label>
+                    <input id="opt-target" type="number" class="form-control form-control-sm" step="0.000001" placeholder="опционально">
+                  </div>
+                  <div class="col-6 col-md-3 col-lg-2">
+                    <label for="opt-session" class="form-label small mb-1">session</label>
+                    <input id="opt-session" type="text" class="form-control form-control-sm" placeholder="авто">
+                  </div>
+                  <div class="col-12 col-lg-3">
+                    <div class="form-check form-switch mt-2">
+                      <input class="form-check-input" type="checkbox" id="opt-parallel" checked>
+                      <label class="form-check-label" for="opt-parallel">Параллельный режим</label>
+                    </div>
+                  </div>
+                  <div class="col-12 col-lg-3 d-grid">
+                    <button type="button" id="start-shape-optimization" class="btn btn-success btn-sm">Запустить оптимизацию формы</button>
+                  </div>
+                </div>
+                <div class="optimization-progress-card">
+                  <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
+                    <span id="optimization-progress-label" class="small text-muted">Задача ещё не запущена.</span>
+                    <span id="optimization-progress-meta" class="small text-muted">—</span>
+                  </div>
+                  <div class="progress" role="progressbar" aria-label="Прогресс оптимизации формы" aria-valuemin="0" aria-valuemax="100">
+                    <div id="optimization-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+                  </div>
+                </div>
+                <div>
+                  <label class="form-label small mb-1" for="optimization-log">Лог оптимизации</label>
+                  <pre id="optimization-log" class="optimization-log">Лог появится после запуска оптимизации.</pre>
+                </div>
+              </div>
             </div>
           </div>
         </div>

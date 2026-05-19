@@ -13,14 +13,20 @@ const viewerState = {
     showNormalNodes: true,
     showEdges: true,
     transparency3D: false,
+    showDisplacements: false,
     normalScaleMultiplier: 1,
+    displacementScaleMultiplier: 1,
+    displacementAutoScale: 1,
     visibleBodies: new Set(),
     defaultCamera: null,
     renderTransform: null,
+    activeRenderBounds: null,
     raycaster: null,
     pointer: null,
     selectedNormalNode: null,
-    normalNodeBaseMaterial: null
+    normalNodeBaseMaterial: null,
+    optimizationJobId: null,
+    optimizationPollTimer: null
 };
 
 const TARGET_RENDER_SIZE = 12;
@@ -28,6 +34,7 @@ const DEFAULT_NORMAL_LENGTH_RATIO = 0.12;
 const DEFAULT_NORMAL_NODE_RADIUS_RATIO = 0.012;
 const NORMAL_NODE_COLOR = 0xb45309;
 const NORMAL_NODE_SELECTED_COLOR = 0xf97316;
+const BODY_COLOR_PALETTE = [0x2563eb, 0xdc2626, 0x16a34a, 0xd97706, 0x7c3aed, 0x0891b2, 0xbe185d, 0x4f46e5, 0x65a30d, 0x0f766e];
 
 function initViewer() {
     initScene();
@@ -92,6 +99,9 @@ function initScene() {
 function bindControls() {
     const normalScale = document.getElementById('normal-scale');
     const normalScaleValue = document.getElementById('normal-scale-value');
+    const displacementScale = document.getElementById('displacement-scale');
+    const displacementScaleValue = document.getElementById('displacement-scale-value');
+    const toggleDisplacements = document.getElementById('toggle-displacements');
     const toggleNormals = document.getElementById('toggle-normals');
     const toggleNormalNodes = document.getElementById('toggle-normal-nodes');
     const toggleEdges = document.getElementById('toggle-edges');
@@ -99,12 +109,29 @@ function bindControls() {
     const fitCameraButton = document.getElementById('fit-camera');
     const showAllBodiesButton = document.getElementById('show-all-bodies');
     const hideAllBodiesButton = document.getElementById('hide-all-bodies');
+    const generateDisplacementsButton = document.getElementById('generate-displacements');
+    const startShapeOptimizationButton = document.getElementById('start-shape-optimization');
 
     normalScale.addEventListener('input', () => {
         viewerState.normalScaleMultiplier = Number(normalScale.value);
         normalScaleValue.textContent = `${viewerState.normalScaleMultiplier.toFixed(1)}×`;
         if (viewerState.currentShape) {
-            renderNormals(viewerState.currentShape);
+            renderShape(viewerState.currentShape, { resetCamera: false });
+        }
+    });
+
+    displacementScale.addEventListener('input', () => {
+        viewerState.displacementScaleMultiplier = Number(displacementScale.value);
+        displacementScaleValue.textContent = `${viewerState.displacementScaleMultiplier.toFixed(1)}×`;
+        if (viewerState.currentShape && shapeHasDisplacements(viewerState.currentShape)) {
+            renderShape(viewerState.currentShape, { resetCamera: false });
+        }
+    });
+
+    toggleDisplacements.addEventListener('change', () => {
+        viewerState.showDisplacements = toggleDisplacements.checked;
+        if (viewerState.currentShape) {
+            renderShape(viewerState.currentShape, { resetCamera: false });
         }
     });
 
@@ -128,9 +155,11 @@ function bindControls() {
         updateMeshTransparency();
     });
 
-    fitCameraButton.addEventListener('click', resetCameraToDefault);
+    fitCameraButton.addEventListener('click', fitCameraToCurrentShape);
     showAllBodiesButton.addEventListener('click', () => setAllBodiesVisibility(true));
     hideAllBodiesButton.addEventListener('click', () => setAllBodiesVisibility(false));
+    generateDisplacementsButton.addEventListener('click', requestGenerateDisplacements);
+    startShapeOptimizationButton.addEventListener('click', requestStartShapeOptimization);
 
     viewerState.renderer.domElement.addEventListener('click', handleViewerClick);
 }
@@ -179,6 +208,9 @@ function renderShapeList(shapes) {
             <div class="shape-list-stats">
                 ${shape.nodes_count} узлов · ${shape.elements_count} элементов · ${shape.normals_count} нормалей
             </div>
+            <div class="shape-list-stats">
+                ${shape.has_displacements ? `смещения: ${shape.displacement_file || 'готово'} (${shape.displacement_count || 0})` : 'смещений пока нет'}
+            </div>
         </button>
     `).join('');
 
@@ -201,10 +233,14 @@ function selectShape(shapeId) {
         .then(shape => {
             viewerState.currentShape = shape;
             viewerState.visibleBodies = new Set(getShapeBodyIds(shape));
+            viewerState.showDisplacements = shapeHasDisplacements(shape);
             clearSelectedNormalNode();
             document.getElementById('shape-title').textContent = shape.name;
+            document.getElementById('toggle-displacements').checked = viewerState.showDisplacements;
+            applySuggestedSmoothingInputs(shape);
             updateShapeSummary(shape);
             renderShape(shape);
+            loadActiveOptimizationJob(shape.id);
         })
         .catch(error => {
             setViewerMessage(`Ошибка загрузки фигуры: ${error.message}`);
@@ -222,12 +258,35 @@ function updateShapeSummary(shape) {
     const bounds = shape.bounds || { min: [0, 0, 0], max: [0, 0, 0], size: [0, 0, 0] };
     const bodyCount = Array.isArray(shape.bodies) ? shape.bodies.length : 0;
     const optimizableNodesCount = Number(shape.normals_count || (shape.normals ? shape.normals.length : 0));
+    const displacementParams = shape.displacement_parameters || (shape.displacement_meta && shape.displacement_meta.parameters) || null;
+    const smoothingStats = shape.smoothing_stats || (shape.displacement_stats || null);
+    const displacementType = shape.displacement_type || (shape.displacement_meta && shape.displacement_meta.type) || null;
+    const displacementInfo = shape.has_displacements
+        ? `${shape.displacement_file || 'smoothing_displacements.json'} · ${shape.displacement_count || 0} узлов`
+        : 'нет файла';
+    const displacementFilesHtml = Array.isArray(shape.displacement_files) && shape.displacement_files.length
+        ? `<div>Доступные displacement-файлы: ${shape.displacement_files.join(', ')}</div>`
+        : '';
+    const displacementParamsHtml = displacementParams
+        ? `<div>Параметры displacement: iter=${formatOptionalNumber(displacementParams.iterations)}, λ=${formatOptionalNumber(displacementParams.lambda)}, μ=${formatOptionalNumber(displacementParams.mu)}, max=${formatOptionalNumber(displacementParams.max_step)}, fitness=${formatOptionalNumber(displacementParams.best_fitness)}</div>`
+        : '';
+    const smoothingStatsHtml = smoothingStats
+        ? `<div>Характерный edge: ${formatOptionalNumber(smoothingStats.characteristic_edge_length)} · рекомендованный max step: ${formatOptionalNumber(smoothingStats.suggested_max_step)}</div>`
+        : '';
+    const displacementTypeHtml = displacementType
+        ? `<div>Тип displacement: ${displacementType}</div>`
+        : '';
 
     document.getElementById('shape-meta').innerHTML = `
         <div><strong>${shape.mesh_file}</strong></div>
         <div>Нормали: ${shape.normals_file || 'нет файла'}</div>
+        <div>Смещения: ${displacementInfo}</div>
+        ${displacementFilesHtml}
+        ${displacementTypeHtml}
         <div>Оптимизируемые узлы: ${optimizableNodesCount}</div>
         <div>Типы элементов: ${shape.element_types.join(', ')}</div>
+        ${displacementParamsHtml}
+        ${smoothingStatsHtml}
     `;
 
     document.getElementById('shape-stats').innerHTML = `
@@ -298,14 +357,17 @@ function renderBodyLegend(shape) {
     });
 }
 
-function renderShape(shape) {
+function renderShape(shape, options = {}) {
     clearGroup(viewerState.meshGroup);
     clearGroup(viewerState.edgeGroup);
     clearGroup(viewerState.normalVectorsGroup);
     clearGroup(viewerState.normalNodesGroup);
 
     viewerState.renderTransform = createRenderTransform(shape);
-    const nodesById = new Map(shape.nodes.map(node => [node.id, transformCoords(node.coords, viewerState.renderTransform)]));
+    viewerState.displacementAutoScale = computeDisplacementAutoScale(shape, viewerState.renderTransform);
+    const displayNodes = buildDisplayNodeMap(shape);
+    const nodesById = new Map([...displayNodes.entries()].map(([nodeId, coords]) => [nodeId, transformCoords(coords, viewerState.renderTransform)]));
+    viewerState.activeRenderBounds = computeBoundsFromCoords([...nodesById.values()]);
     const faceBuckets = buildRenderableFaces(shape.elements);
 
     faceBuckets.forEach((faces, bodyId) => {
@@ -327,13 +389,12 @@ function renderShape(shape) {
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geometry.computeVertexNormals();
 
-        const material = new THREE.MeshStandardMaterial({
-            color: colorForBody(bodyId),
+        const material = new THREE.MeshBasicMaterial({
+            color: colorForBodyHex(bodyId),
             side: THREE.DoubleSide,
             transparent: true,
             opacity: 0.92,
-            roughness: 0.72,
-            metalness: 0.08
+            depthWrite: true
         });
 
         const mesh = new THREE.Mesh(geometry, material);
@@ -348,15 +409,17 @@ function renderShape(shape) {
         viewerState.edgeGroup.add(edges);
     });
 
-    renderNormals(shape);
-    fitCameraToShape(shape);
+    renderNormals(shape, displayNodes);
+    if (options.resetCamera !== false) {
+        fitCameraToCurrentShape();
+    }
     updateMeshTransparency();
     applyBodyVisibility();
     clearSelectedNodeInfo();
-    setViewerMessage(`Загружено: ${shape.name}. Вращайте сцену мышью, масштабируйте колесом.`);
+    setViewerMessage(buildViewerLoadedMessage(shape));
 }
 
-function renderNormals(shape) {
+function renderNormals(shape, displayNodes) {
     clearGroup(viewerState.normalVectorsGroup);
     clearGroup(viewerState.normalNodesGroup);
 
@@ -379,8 +442,14 @@ function renderNormals(shape) {
     });
     viewerState.normalNodeBaseMaterial = sphereMaterial;
 
+    const displacementLookup = Array.isArray(shape.displacements)
+        ? new Map(shape.displacements.map(item => [Number(item.node_id), item]))
+        : null;
+
     shape.normals.forEach(normal => {
-        const start = transformCoords(normal.coords, transform);
+        const activeCoords = displayNodes.get(normal.node_id) || normal.coords;
+        const displacement = displacementLookup && displacementLookup.get(Number(normal.node_id));
+        const start = transformCoords(activeCoords, transform);
         const length = Math.hypot(...normal.vector);
         const direction = length > 0
             ? normal.vector.map(component => component / length)
@@ -398,6 +467,8 @@ function renderNormals(shape) {
         sphere.userData.normalData = {
             nodeId: normal.node_id,
             coords: [...normal.coords],
+            activeCoords: [...activeCoords],
+            displacement: displacement ? [...displacement.delta] : null,
             vector: [...normal.vector]
         };
         viewerState.normalNodesGroup.add(sphere);
@@ -448,14 +519,14 @@ function addFaceToBucket(buckets, bodyId, face) {
     buckets.get(key).push(face);
 }
 
-function fitCameraToShape(shape) {
-    const transform = viewerState.renderTransform || createRenderTransform(shape);
-    if (!transform) {
+function fitCameraToCurrentShape() {
+    const bounds = viewerState.activeRenderBounds;
+    if (!bounds) {
         return;
     }
 
-    const center = new THREE.Vector3(0, 0, 0);
-    const size = new THREE.Vector3(transform.renderSize[0], transform.renderSize[1], transform.renderSize[2]);
+    const center = new THREE.Vector3(bounds.center[0], bounds.center[1], bounds.center[2]);
+    const size = new THREE.Vector3(bounds.size[0], bounds.size[1], bounds.size[2]);
     const maxDim = Math.max(size.x, size.y, size.z, 1);
     const distance = maxDim * 2.2;
 
@@ -552,7 +623,12 @@ function applyBodyVisibility() {
 function syncDisplayControls(shape) {
     const transparencyToggle = document.getElementById('toggle-transparent-3d');
     const transparencyHint = document.getElementById('transparency-hint');
+    const displacementToggle = document.getElementById('toggle-displacements');
+    const displacementScale = document.getElementById('displacement-scale');
+    const generateButton = document.getElementById('generate-displacements');
+    const optimizationButton = document.getElementById('start-shape-optimization');
     const hasNormals = Array.isArray(shape.normals) && shape.normals.length > 0;
+    const hasDisplacements = shapeHasDisplacements(shape);
     const is3D = Number(shape.dimension) === 3;
 
     transparencyToggle.disabled = !is3D;
@@ -566,6 +642,22 @@ function syncDisplayControls(shape) {
 
     document.getElementById('toggle-normals').disabled = !hasNormals;
     document.getElementById('toggle-normal-nodes').disabled = !hasNormals;
+    displacementToggle.disabled = !hasDisplacements;
+    displacementScale.disabled = !hasDisplacements;
+    if (!hasDisplacements) {
+        displacementToggle.checked = false;
+        viewerState.showDisplacements = false;
+        const suggestion = shape.smoothing_stats && shape.smoothing_stats.suggested_max_step
+            ? ` Рекомендуемый max step для этой сетки: ${formatOptionalNumber(shape.smoothing_stats.suggested_max_step)}.`
+            : '';
+        setDisplacementStatus(`Файл smoothing-смещений пока не создан. Нажмите кнопку ниже, чтобы его сохранить.${suggestion}`);
+    } else {
+        displacementToggle.checked = viewerState.showDisplacements;
+        setDisplacementStatus(`Найден ${shape.displacement_file || 'smoothing_displacements.json'} на ${shape.displacement_count || 0} узлов. Автоусиление деформации: ${viewerState.displacementAutoScale.toFixed(1)}×.`);
+    }
+
+    generateButton.disabled = !hasNormals;
+    optimizationButton.disabled = false;
 }
 
 function handleViewerClick(event) {
@@ -627,12 +719,27 @@ function renderSelectedNodeInfo(normalData) {
         return;
     }
 
+    const extraRows = [];
+    if (normalData.activeCoords) {
+        extraRows.push(`
+            <div class="selected-node-label">Текущие координаты</div>
+            <div class="selected-node-value">[${normalData.activeCoords.map(formatNumber).join(', ')}]</div>
+        `);
+    }
+    if (normalData.displacement) {
+        extraRows.push(`
+            <div class="selected-node-label">Смещение</div>
+            <div class="selected-node-value">[${normalData.displacement.map(formatNumber).join(', ')}]</div>
+        `);
+    }
+
     infoElement.innerHTML = `
         <div class="selected-node-grid">
             <div class="selected-node-label">Node ID</div>
             <div class="selected-node-value">${normalData.nodeId}</div>
             <div class="selected-node-label">Координаты</div>
             <div class="selected-node-value">[${normalData.coords.map(formatNumber).join(', ')}]</div>
+            ${extraRows.join('')}
             <div class="selected-node-label">Нормаль</div>
             <div class="selected-node-value">[${normalData.vector.map(formatNumber).join(', ')}]</div>
         </div>
@@ -691,6 +798,374 @@ function clearGroup(group) {
     materials.forEach(material => material.dispose());
 }
 
+function shapeHasDisplacements(shape) {
+    return Array.isArray(shape.displacements) && shape.displacements.length > 0;
+}
+
+function buildDisplayNodeMap(shape) {
+    const displacementMap = viewerState.showDisplacements && shapeHasDisplacements(shape)
+        ? new Map(shape.displacements.map(item => [Number(item.node_id), item.delta.map(Number)]))
+        : null;
+    const effectiveScale = viewerState.displacementScaleMultiplier * viewerState.displacementAutoScale;
+
+    return new Map(shape.nodes.map(node => {
+        const baseCoords = node.coords.map(Number);
+        const delta = displacementMap && displacementMap.get(Number(node.id));
+
+        if (!delta) {
+            return [node.id, baseCoords];
+        }
+
+        return [
+            node.id,
+            [
+                baseCoords[0] + delta[0] * effectiveScale,
+                baseCoords[1] + delta[1] * effectiveScale,
+                baseCoords[2] + delta[2] * effectiveScale
+            ]
+        ];
+    }));
+}
+
+function computeDisplacementAutoScale(shape, transform) {
+    if (!shapeHasDisplacements(shape) || !transform) {
+        return 1;
+    }
+
+    const maxWorldDisplacement = shape.displacements.reduce((maxValue, item) => {
+        const delta = Array.isArray(item.delta) ? item.delta.map(Number) : [0, 0, 0];
+        const magnitude = Math.hypot(delta[0], delta[1], delta[2]);
+        return Math.max(maxValue, magnitude);
+    }, 0);
+
+    if (maxWorldDisplacement <= 1e-12) {
+        return 1;
+    }
+
+    const maxSceneDisplacement = maxWorldDisplacement * transform.scale;
+    const targetSceneDisplacement = TARGET_RENDER_SIZE * 0.05;
+    return Math.max(targetSceneDisplacement / maxSceneDisplacement, 1);
+}
+
+function computeBoundsFromCoords(coordsList) {
+    if (!coordsList.length) {
+        return {
+            min: [0, 0, 0],
+            max: [0, 0, 0],
+            size: [1, 1, 1],
+            center: [0, 0, 0]
+        };
+    }
+
+    const min = [...coordsList[0]];
+    const max = [...coordsList[0]];
+
+    coordsList.forEach(coords => {
+        coords.forEach((value, index) => {
+            min[index] = Math.min(min[index], value);
+            max[index] = Math.max(max[index], value);
+        });
+    });
+
+    return {
+        min,
+        max,
+        size: min.map((value, index) => max[index] - value),
+        center: min.map((value, index) => (value + max[index]) / 2)
+    };
+}
+
+function buildViewerLoadedMessage(shape) {
+    if (viewerState.showDisplacements && shapeHasDisplacements(shape)) {
+        return `Загружено: ${shape.name}. Смещения из файла ${shape.displacement_file || ''} применены с масштабом ${viewerState.displacementScaleMultiplier.toFixed(1)}×.`;
+    }
+
+    return `Загружено: ${shape.name}. Вращайте сцену мышью, масштабируйте колесом.`;
+}
+
+function setDisplacementStatus(message, tone = 'muted') {
+    const status = document.getElementById('displacement-status');
+    status.className = `small text-${tone}`;
+    status.textContent = message;
+}
+
+function updateShapeSummaryCache(shape) {
+    viewerState.summaries = viewerState.summaries.map(item => item.id === shape.id ? { ...item, ...shape } : item);
+    renderShapeList(viewerState.summaries);
+    setActiveShape(shape.id);
+}
+
+function refreshShapeSummaries() {
+    return fetch('/api/shapes')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(shapes => {
+            viewerState.summaries = shapes;
+            renderShapeList(shapes);
+            if (viewerState.currentShape) {
+                setActiveShape(viewerState.currentShape.id);
+            }
+            return shapes;
+        });
+}
+
+function requestGenerateDisplacements() {
+    if (!viewerState.currentShape) {
+        return;
+    }
+
+    const iterations = Number(document.getElementById('smooth-iterations').value || 3);
+    const lambda = Number(document.getElementById('smooth-lambda').value || 0.25);
+    const muRaw = document.getElementById('smooth-mu').value;
+    const maxStepRaw = document.getElementById('smooth-max-step').value;
+    const payload = {
+        iterations,
+        lambda,
+        mu: muRaw === '' ? null : Number(muRaw),
+        max_step: maxStepRaw === '' ? null : Number(maxStepRaw)
+    };
+
+    setDisplacementStatus('Считаю smoothing-смещения и сохраняю displacement JSON рядом с сеткой...', 'primary');
+
+    fetch(`/api/shapes/${encodeURIComponent(viewerState.currentShape.id)}/displacements`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+        .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data.error || 'Не удалось создать файл смещений.');
+            }
+
+            viewerState.currentShape = data;
+            viewerState.visibleBodies = new Set(getShapeBodyIds(data));
+            viewerState.showDisplacements = true;
+            document.getElementById('toggle-displacements').checked = true;
+            updateShapeSummaryCache(data);
+            updateShapeSummary(data);
+            renderShape(data);
+            setDisplacementStatus(`Смещения сохранены в ${data.displacement_file || 'smoothing_displacements.json'}.`, 'success');
+        })
+        .catch(error => {
+            setDisplacementStatus(`Ошибка: ${error.message}`, 'danger');
+        });
+}
+
+function requestStartShapeOptimization() {
+    if (!viewerState.currentShape) {
+        return;
+    }
+
+    const payload = {
+        session_name: document.getElementById('opt-session').value.trim(),
+        sigma: Number(document.getElementById('opt-sigma').value || 0.3),
+        max_evaluations: Number(document.getElementById('opt-max-evals').value || 1000),
+        max_generations: Number(document.getElementById('opt-max-gen').value || 500),
+        workers: Number(document.getElementById('opt-workers').value || 8),
+        parallel: document.getElementById('opt-parallel').checked,
+        target_fitness: parseOptionalNumber(document.getElementById('opt-target').value)
+    };
+
+    setOptimizationStatus('Запускаю shape optimization в фоне...', 'primary');
+    setOptimizationProgress({ progress_percent: 2, phase: 'queued', recent_log_lines: ['Подготовка запуска оптимизации...'] });
+
+    fetch(`/api/shapes/${encodeURIComponent(viewerState.currentShape.id)}/optimization`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+        .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data.error || 'Не удалось запустить оптимизацию формы.');
+            }
+
+            viewerState.optimizationJobId = data.id;
+            setOptimizationStatus(data.reused ? 'Оптимизация уже выполняется, подключаюсь к текущей задаче.' : 'Оптимизация запущена. Следим за прогрессом...', data.reused ? 'warning' : 'success');
+            setOptimizationProgress(data);
+            startOptimizationPolling(data.id);
+        })
+        .catch(error => {
+            setOptimizationStatus(`Ошибка запуска: ${error.message}`, 'danger');
+        });
+}
+
+function loadActiveOptimizationJob(shapeId) {
+    stopOptimizationPolling({ preserveState: false });
+
+    fetch(`/api/shapes/${encodeURIComponent(shapeId)}/optimization/active`)
+        .then(response => response.ok ? response.json() : null)
+        .then(job => {
+            if (!job) {
+                resetOptimizationPanel();
+                return;
+            }
+
+            viewerState.optimizationJobId = job.id;
+            setOptimizationStatus('Найдена активная задача оптимизации, продолжаю мониторинг.', 'primary');
+            setOptimizationProgress(job);
+            startOptimizationPolling(job.id);
+        })
+        .catch(() => {
+            resetOptimizationPanel();
+        });
+}
+
+function startOptimizationPolling(jobId) {
+    stopOptimizationPolling({ preserveState: true });
+    viewerState.optimizationJobId = jobId;
+    pollOptimizationJob();
+    viewerState.optimizationPollTimer = window.setInterval(pollOptimizationJob, 2000);
+}
+
+function stopOptimizationPolling({ preserveState = true } = {}) {
+    if (viewerState.optimizationPollTimer) {
+        window.clearInterval(viewerState.optimizationPollTimer);
+        viewerState.optimizationPollTimer = null;
+    }
+
+    if (!preserveState) {
+        viewerState.optimizationJobId = null;
+    }
+}
+
+function pollOptimizationJob() {
+    if (!viewerState.optimizationJobId) {
+        return;
+    }
+
+    fetch(`/api/shape-optimization/jobs/${encodeURIComponent(viewerState.optimizationJobId)}`)
+        .then(response => response.json().then(data => ({ ok: response.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                throw new Error(data.error || 'Не удалось получить статус задачи.');
+            }
+
+            setOptimizationProgress(data);
+
+            if (data.status === 'completed') {
+                stopOptimizationPolling({ preserveState: true });
+                setOptimizationStatus('Оптимизация завершена. Обновляю данные фигуры и displacement-файлы.', 'success');
+                refreshAfterOptimization(data.shape_id);
+            } else if (data.status === 'failed') {
+                stopOptimizationPolling({ preserveState: true });
+                setOptimizationStatus(`Оптимизация завершилась с ошибкой (код ${data.exit_code ?? '—'}).`, 'danger');
+            }
+        })
+        .catch(error => {
+            stopOptimizationPolling({ preserveState: true });
+            setOptimizationStatus(`Ошибка получения статуса: ${error.message}`, 'danger');
+        });
+}
+
+function refreshAfterOptimization(shapeId) {
+    refreshShapeSummaries()
+        .then(() => {
+            if (viewerState.currentShape && viewerState.currentShape.id === shapeId) {
+                return selectShape(shapeId);
+            }
+            return null;
+        })
+        .catch(error => {
+            setOptimizationStatus(`Оптимизация завершилась, но обновить UI не удалось: ${error.message}`, 'warning');
+        });
+}
+
+function setOptimizationStatus(message, tone = 'muted') {
+    const status = document.getElementById('optimization-status');
+    status.className = `small text-${tone}`;
+    status.textContent = message;
+}
+
+function setOptimizationProgress(job) {
+    const startButton = document.getElementById('start-shape-optimization');
+    const progressBar = document.getElementById('optimization-progress-bar');
+    const progressLabel = document.getElementById('optimization-progress-label');
+    const progressMeta = document.getElementById('optimization-progress-meta');
+    const logElement = document.getElementById('optimization-log');
+    const progress = Math.max(0, Math.min(Number(job.progress_percent || 0), 100));
+
+    progressBar.style.width = `${progress}%`;
+    progressBar.textContent = `${progress.toFixed(0)}%`;
+    progressBar.setAttribute('aria-valuenow', `${progress}`);
+    progressBar.classList.toggle('progress-bar-animated', !['completed', 'failed'].includes(job.status));
+    progressBar.classList.toggle('bg-success', job.status === 'completed');
+    progressBar.classList.toggle('bg-danger', job.status === 'failed');
+    startButton.disabled = ['running', 'queued'].includes(job.status);
+
+    progressLabel.textContent = buildOptimizationProgressLabel(job);
+    progressMeta.textContent = buildOptimizationProgressMeta(job);
+    logElement.textContent = Array.isArray(job.recent_log_lines) && job.recent_log_lines.length
+        ? job.recent_log_lines.join('\n')
+        : 'Лог пока пуст.';
+    logElement.scrollTop = logElement.scrollHeight;
+}
+
+function resetOptimizationPanel() {
+    stopOptimizationPolling({ preserveState: false });
+    setOptimizationStatus('Выберите фигуру и задайте параметры, чтобы запустить оптимизацию формы прямо из UI.');
+    setOptimizationProgress({ progress_percent: 0, phase: 'idle', status: 'idle', recent_log_lines: ['Лог появится после запуска оптимизации.'] });
+}
+
+function buildOptimizationProgressLabel(job) {
+    const phaseLabels = {
+        queued: 'В очереди',
+        extracting_boundaries: 'Извлечение границ смещений',
+        optimizing: 'Идёт оптимизация',
+        completed: 'Оптимизация завершена',
+        failed: 'Оптимизация завершилась с ошибкой',
+        idle: 'Задача ещё не запущена'
+    };
+
+    return phaseLabels[job.phase] || phaseLabels[job.status] || 'Оптимизация формы';
+}
+
+function buildOptimizationProgressMeta(job) {
+    const generationPart = typeof job.current_generation === 'number' && typeof job.max_generations === 'number'
+        ? `gen ${job.current_generation}/${job.max_generations}`
+        : null;
+    const evalPart = typeof job.current_evaluations === 'number' && typeof job.max_evaluations === 'number'
+        ? `eval ${job.current_evaluations}/${job.max_evaluations}`
+        : null;
+    const fitnessPart = typeof job.best_fitness === 'number'
+        ? `best ${formatNumber(job.best_fitness)}`
+        : null;
+
+    return [generationPart, evalPart, fitnessPart].filter(Boolean).join(' · ') || '—';
+}
+
+function applySuggestedSmoothingInputs(shape) {
+    const suggestedMaxStep = shape.smoothing_stats && typeof shape.smoothing_stats.suggested_max_step === 'number'
+        ? shape.smoothing_stats.suggested_max_step
+        : null;
+
+    if (suggestedMaxStep === null) {
+        return;
+    }
+
+    const maxStepInput = document.getElementById('smooth-max-step');
+    maxStepInput.value = suggestedMaxStep.toFixed(6);
+}
+
+function parseOptionalNumber(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 function handleResize() {
     const container = document.getElementById('shape-canvas');
     if (!container || !viewerState.renderer || !viewerState.camera) {
@@ -714,10 +1189,13 @@ function animate() {
     }
 }
 
+function colorForBodyHex(bodyId) {
+    const numericBody = Math.abs(Number(bodyId || 0));
+    return BODY_COLOR_PALETTE[numericBody % BODY_COLOR_PALETTE.length];
+}
+
 function colorForBody(bodyId) {
-    const numericBody = Number(bodyId || 0);
-    const hue = (numericBody * 67) % 360;
-    return `hsl(${hue}, 70%, 55%)`;
+    return `#${colorForBodyHex(bodyId).toString(16).padStart(6, '0')}`;
 }
 
 function setViewerMessage(message) {
@@ -729,6 +1207,10 @@ function formatNumber(value) {
         return '0';
     }
     return Math.abs(value) >= 1 ? value.toFixed(4) : value.toExponential(2);
+}
+
+function formatOptionalNumber(value) {
+    return typeof value === 'number' && !Number.isNaN(value) ? formatNumber(value) : '—';
 }
 
 document.addEventListener('DOMContentLoaded', initViewer);

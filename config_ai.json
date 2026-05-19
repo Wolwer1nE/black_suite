@@ -1,0 +1,44 @@
+{
+  "strategy": {
+    "method": "hybrid_ai",
+    "max_generations": 20,
+    "population_size": 20,
+    "crossover_prob": 0.8,
+    "mutation_prob": 0.1,
+    "tournament_size": 3,
+    "elite_count": 2,
+    "epsilon": 1e-6,
+    "max_stagnant_epochs": 8
+  },
+  "parameters": {
+    "mins": [0.004, 0.018, 0.005],
+    "maxs": [0.012, 0.026, 0.025],
+    "names": ["c1", "c2", "c3"]
+  },
+  "comsol": {
+    "file": "3problemOpt.mph",
+    "method_call": "target_function",
+    "work_dir": "work_dir",
+    "silent_output": false
+  },
+  "ai": {
+    "seed": 42,
+    "initial_samples": 12,
+    "batch_size": 4,
+    "candidate_pool_size": 48,
+    "max_iterations": 20,
+    "exploration_ratio": 0.55,
+    "local_radius": 0.12,
+    "local_radius_decay": 0.96,
+    "min_distance_threshold": 0.04,
+    "acquisition": "expected_improvement",
+    "kappa": 2.0,
+    "xi": 0.005,
+    "target_fitness": null,
+    "import_existing_cache": true,
+    "historical_cache_glob": "optimization_cache*.json"
+  },
+  "output": {
+    "cache_file": "optimization_cache_hybrid_ai.json"
+  }
+}

@@ -10,6 +10,7 @@ class ShapeOptimizationConfig
   attr_reader :shift_boundaries_template, :form_opt_template
   attr_reader :shift_boundary_json, :form_opt_json
   attr_reader :normals_file, :shifts_file, :shift_jam_file
+  attr_reader :optimization_displacement_file, :shape_visualization_displacement_file
 
   # @param mesh_file [String] путь к файлу сетки
   # @param session_name [String, nil] имя сессии (если nil, генерируется автоматически)
@@ -32,6 +33,8 @@ class ShapeOptimizationConfig
     @shift_jam_file = File.join(@work_dir, 'shift.jam')
     @shifts_file = File.join(@work_dir, 'shifts.txt')
     @normals_file = File.join(@work_dir, 'normals.txt')
+    @optimization_displacement_file = File.join(@work_dir, 'optimization_displacements.json')
+    @shape_visualization_displacement_file = File.join(File.dirname(@mesh_file), 'optimization_displacements.json')
 
     validate_mesh_file
   end
@@ -146,6 +149,10 @@ class ShapeOptimizationConfig
       raise "Файл normals.txt не найден: #{@normals_file}"
     end
     true
+  end
+
+  def displacement_export_targets
+    [@optimization_displacement_file, @shape_visualization_displacement_file].uniq
   end
 
   private

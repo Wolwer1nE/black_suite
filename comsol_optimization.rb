@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 require_relative 'src/optimization_config'
-require_relative 'src/genetics/comsol_genetic_optimizer'
+require_relative 'src/optimization/optimizer_factory'
 
 def main
   if ARGV.empty?
@@ -37,6 +37,10 @@ def print_config_summary(config, config_file)
   puts
 
   strategy = config.create_genetic_strategy
+  optimizer_method = config.optimizer_method
+
+  puts "🧠 РЕЖИМ ОПТИМИЗАЦИИ: #{optimizer_method}"
+  puts
 
   puts "🧬 ПАРАМЕТРЫ ОПТИМИЗАЦИИ:"
   puts "  Максимум поколений:     #{config.max_generations}"
@@ -64,6 +68,14 @@ def print_config_summary(config, config_file)
 
   puts "💾 НАСТРОЙКИ ВЫВОДА:"
   puts "  Файл кэша:           #{config.cache_file}"
+  if optimizer_method == 'hybrid_ai'
+    puts
+    puts "🤖 AI-ПАРАМЕТРЫ:"
+    puts "  Initial samples:     #{config.ai_options['initial_samples'] || 'auto'}"
+    puts "  Batch size:          #{config.ai_options['batch_size'] || 'auto'}"
+    puts "  Candidate pool:      #{config.ai_options['candidate_pool_size'] || 'auto'}"
+    puts "  Acquisition:         #{config.ai_options['acquisition'] || 'expected_improvement'}"
+  end
   puts
 
   puts "=" * 60
@@ -73,7 +85,7 @@ def print_config_summary(config, config_file)
 end
 
 def run_genetic_optimization(config)
-  optimizer = ComsolGeneticOptimizer.new(config)
+  optimizer = OptimizerFactory.build(config)
   best_individual = optimizer.optimize
 
   puts "\nОптимизация завершена!"

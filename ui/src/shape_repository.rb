@@ -1,7 +1,11 @@
 require 'json'
 require_relative '../../src/mesh_loader'
+require_relative '../../src/normal_projected_surface_smoother'
 
 class ShapeRepository
+  DISPLACEMENT_FILENAME = NormalProjectedSurfaceSmoother::DEFAULT_OUTPUT_FILENAME
+  DISPLACEMENT_GLOB = '*_displacements.json'
+
   def initialize(root_dir)
     @root_dir = File.expand_path(root_dir)
   end
@@ -19,6 +23,32 @@ class ShapeRepository
 
     mesh = load_mesh(entry)
     build_payload(entry, mesh)
+  end
+
+  def shape_entry(shape_id)
+    find_shape_entry(shape_id)
+  end
+
+  def generate_displacements(shape_id, iterations:, lambda:, mu:, max_step:)
+    entry = find_shape_entry(shape_id)
+    return nil unless entry
+
+    raise 'Для этой фигуры не найден файл нормалей.' unless entry[:normals_path]
+
+    smoother = NormalProjectedSurfaceSmoother.load(entry[:mesh_path], normals_path: entry[:normals_path])
+    requested_max_step = max_step
+    effective_max_step = requested_max_step.nil? ? smoother.suggested_max_step : requested_max_step
+
+    smoother.save_displacement_file(
+      displacement_file_path(entry),
+      iterations: iterations,
+      lambda: lambda,
+      mu: mu,
+      max_step: effective_max_step
+    )
+
+    mesh = load_mesh(entry)
+    build_payload(refresh_entry(entry), mesh)
   end
 
   private
@@ -40,7 +70,9 @@ class ShapeRepository
         name: name.tr('_', ' '),
         directory: full_path,
         mesh_path: mesh_path,
-        normals_path: normals_path
+        normals_path: normals_path,
+        displacement_path: detect_displacement_path(full_path),
+        displacement_files: detect_displacement_files(full_path)
       }
     end
   end
@@ -58,12 +90,22 @@ class ShapeRepository
   def build_summary(entry, mesh)
     bounds = mesh.bounds
     body_ids = mesh.elements.values.map { |element| element[:body] }.compact.uniq.sort
+    displacement_data = load_displacements(entry[:displacement_path])
+    displacement_meta = displacement_data && displacement_data[:meta]
+    smoothing_stats = smoothing_stats(entry)
 
     {
       id: entry[:id],
       name: entry[:name],
       mesh_file: File.basename(entry[:mesh_path]),
       normals_file: entry[:normals_path] && File.basename(entry[:normals_path]),
+      displacement_file: entry[:displacement_path] && File.basename(entry[:displacement_path]),
+      displacement_files: Array(entry[:displacement_files]).map { |path| File.basename(path) },
+      has_displacements: !!entry[:displacement_path],
+      displacement_count: displacement_data ? displacement_data[:displacements].size : 0,
+      displacement_parameters: displacement_meta && displacement_meta[:parameters],
+      displacement_type: displacement_meta && displacement_meta[:type],
+      smoothing_stats: smoothing_stats,
       nodes_count: mesh.nodes.size,
       elements_count: mesh.elements.size,
       normals_count: mesh.normals.size,
@@ -77,6 +119,7 @@ class ShapeRepository
 
   def build_payload(entry, mesh)
     summary = build_summary(entry, mesh)
+    displacement_data = load_displacements(entry[:displacement_path])
 
     summary.merge(
       nodes: mesh.nodes.sort_by { |id, _| id }.map do |id, coords|
@@ -101,7 +144,75 @@ class ShapeRepository
           coords: coords,
           vector: vector
         }
-      end
+      end,
+      displacement_meta: displacement_data && displacement_data[:meta],
+      displacement_stats: displacement_data && displacement_data[:stats],
+      displacements: displacement_data ? displacement_data[:displacements] : []
     )
+  end
+
+  def smoothing_stats(entry)
+    return nil unless entry[:normals_path]
+
+    smoother = NormalProjectedSurfaceSmoother.load(entry[:mesh_path], normals_path: entry[:normals_path])
+    {
+      characteristic_edge_length: smoother.characteristic_edge_length,
+      suggested_max_step: smoother.suggested_max_step
+    }
+  rescue StandardError
+    nil
+  end
+
+  def detect_displacement_path(directory)
+    detect_displacement_files(directory).first
+  end
+
+  def detect_displacement_files(directory)
+    Dir.glob(File.join(directory, DISPLACEMENT_GLOB))
+       .select { |path| File.file?(path) }
+       .sort_by { |path| [-File.mtime(path).to_i, File.basename(path)] }
+  end
+
+  def displacement_file_path(entry)
+    File.join(entry[:directory], DISPLACEMENT_FILENAME)
+  end
+
+  def refresh_entry(entry)
+    entry.merge(
+      displacement_path: detect_displacement_path(entry[:directory]),
+      displacement_files: detect_displacement_files(entry[:directory])
+    )
+  end
+
+  def load_displacements(path)
+    return nil unless path && File.exist?(path)
+
+    raw = JSON.parse(File.read(path))
+    displacements = Array(raw['displacements']).filter_map do |item|
+      node_id = item['node_id']&.to_i
+      delta = Array(item['delta']).map(&:to_f)
+      next unless node_id && delta.size == 3
+
+      {
+        node_id: node_id,
+        scalar: item['scalar']&.to_f,
+        delta: delta,
+        original_coords: Array(item['original_coords']).map(&:to_f),
+        smoothed_coords: Array(item['smoothed_coords']).map(&:to_f)
+      }
+    end
+
+    {
+      meta: {
+        type: raw['type'],
+        version: raw['version'],
+        created_at: raw['created_at'],
+        movable_nodes_count: raw['movable_nodes_count'],
+        parameters: raw['parameters'] || {},
+        metadata: raw['metadata'] || {}
+      },
+      stats: raw['stats'] || {},
+      displacements: displacements.sort_by { |item| item[:node_id] }
+    }
   end
 end

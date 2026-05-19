@@ -10,6 +10,8 @@ require_relative 'src/form_optimization_fitness'
 require_relative 'src/parallel_form_optimization_fitness'
 require_relative 'src/optimization/cma_es'
 require_relative 'src/simple_logger'
+require_relative 'src/mesh_loader'
+require_relative 'src/displacement_visualization_payload'
 
 def print_usage
   puts "Использование: ruby shape_optimization.rb <mesh_file> [options]"
@@ -198,8 +200,53 @@ def main
   puts "\nРезультаты сохранены:"
   puts "  Отчёт: #{result_file}"
   puts "  Лучшие коэффициенты: #{best_coef_file}"
+
+  export_visualization_displacements(config, result, options, elapsed)
+
   puts "  Рабочий каталог: #{config.work_dir}"
   puts "\nГотово!"
+end
+
+def export_visualization_displacements(config, result, options, elapsed)
+  mesh = Mesh.load_from_nas(config.mesh_file)
+  mesh.load_normals!(config.normals_file)
+
+  ordered_node_ids = mesh.normals.keys.map(&:to_i)
+  coefficients = result[:solution].to_a
+
+  payload = DisplacementVisualizationPayload.from_scalars(
+    mesh: mesh,
+    node_ids: ordered_node_ids,
+    scalars: coefficients,
+    type: 'shape_optimization_result',
+    parameters: {
+      source: 'cma_es',
+      sigma: options[:sigma],
+      generations: result[:generations],
+      evaluations: result[:evaluations],
+      best_fitness: result[:fitness],
+      elapsed_seconds: elapsed
+    },
+    stats: {
+      coefficients_count: coefficients.size,
+      min_coefficient: coefficients.min,
+      max_coefficient: coefficients.max
+    },
+    metadata: {
+      mesh_file: config.mesh_file,
+      normals_file: config.normals_file,
+      session_name: config.session_name
+    }
+  )
+
+  config.displacement_export_targets.each do |path|
+    begin
+      DisplacementVisualizationPayload.write(path, payload)
+      puts "  Displacement JSON: #{path}"
+    rescue StandardError => e
+      puts "  ⚠ Не удалось сохранить displacement JSON в #{path}: #{e.message}"
+    end
+  end
 end
 
 if __FILE__ == $PROGRAM_NAME
