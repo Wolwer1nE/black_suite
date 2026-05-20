@@ -618,6 +618,7 @@ function syncDisplayControls(shape) {
     const hasNormals = Array.isArray(shape.normals) && shape.normals.length > 0;
     const hasDisplacements = shapeHasDisplacements(shape);
     const is3D = Number(shape.dimension) === 3;
+    const optimizationSupported = shape.optimization_supported !== false;
 
     transparencyToggle.disabled = !is3D;
     if (!is3D) {
@@ -645,7 +646,12 @@ function syncDisplayControls(shape) {
     }
 
     generateButton.disabled = !hasNormals;
-    optimizationButton.disabled = false;
+    optimizationButton.disabled = !optimizationSupported;
+
+    if (!optimizationSupported) {
+        setOptimizationStatus(shape.optimization_support_reason || 'Для этой фигуры shape optimization недоступна.', 'warning');
+        setOptimizationProgress({ progress_percent: 0, phase: 'idle', status: 'idle', recent_log_lines: ['Оптимизация отключена для текущей фигуры.'] });
+    }
 }
 
 function handleViewerClick(event) {
@@ -951,6 +957,11 @@ function requestStartShapeOptimization() {
         return;
     }
 
+    if (viewerState.currentShape.optimization_supported === false) {
+        setOptimizationStatus(viewerState.currentShape.optimization_support_reason || 'Для этой фигуры оптимизация формы недоступна.', 'warning');
+        return;
+    }
+
     const payload = {
         session_name: document.getElementById('opt-session').value.trim(),
         sigma: Number(document.getElementById('opt-sigma').value || 0.3),
@@ -989,6 +1000,12 @@ function requestStartShapeOptimization() {
 
 function loadActiveOptimizationJob(shapeId) {
     stopOptimizationPolling({ preserveState: false });
+
+    if (viewerState.currentShape && viewerState.currentShape.optimization_supported === false) {
+        setOptimizationStatus(viewerState.currentShape.optimization_support_reason || 'Для этой фигуры оптимизация формы недоступна.', 'warning');
+        setOptimizationProgress({ progress_percent: 0, phase: 'idle', status: 'idle', recent_log_lines: ['Оптимизация отключена для текущей фигуры.'] });
+        return;
+    }
 
     fetch(`/api/shapes/${encodeURIComponent(shapeId)}/optimization/active`)
         .then(response => response.ok ? response.json() : null)

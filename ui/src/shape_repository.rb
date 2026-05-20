@@ -29,6 +29,14 @@ class ShapeRepository
     find_shape_entry(shape_id)
   end
 
+  def optimization_support(shape_id)
+    entry = find_shape_entry(shape_id)
+    return nil unless entry
+
+    mesh = load_mesh(entry)
+    optimization_support_for(entry, mesh)
+  end
+
   def generate_displacements(shape_id, iterations:, lambda:, mu:, max_step:)
     entry = find_shape_entry(shape_id)
     return nil unless entry
@@ -93,6 +101,7 @@ class ShapeRepository
     displacement_data = load_displacements(entry[:displacement_path])
     displacement_meta = displacement_data && displacement_data[:meta]
     smoothing_stats = smoothing_stats(entry)
+    optimization_support = optimization_support_for(entry, mesh)
 
     {
       id: entry[:id],
@@ -113,7 +122,9 @@ class ShapeRepository
       bodies: body_ids,
       dimension: mesh.spatial_dimension,
       element_types: mesh.element_types,
-      bounds: bounds
+      bounds: bounds,
+      optimization_supported: optimization_support[:supported],
+      optimization_support_reason: optimization_support[:reason]
     }
   end
 
@@ -161,6 +172,30 @@ class ShapeRepository
     }
   rescue StandardError
     nil
+  end
+
+  def optimization_support_for(entry, mesh)
+    return unsupported_optimization('Для этой фигуры не найден файл нормалей.') unless entry[:normals_path]
+
+    element_types = mesh.element_types
+
+    if element_types.empty?
+      return unsupported_optimization(
+        'Shape optimization требует mesh с поддерживаемыми элементами CTRIA3 или CTETRA4.'
+      )
+    end
+
+    if element_types.size > 1
+      return unsupported_optimization(
+        "Shape optimization пока не поддерживает смешанные типы элементов: #{element_types.join(', ')}."
+      )
+    end
+
+    { supported: true, reason: nil }
+  end
+
+  def unsupported_optimization(reason)
+    { supported: false, reason: reason }
   end
 
   def detect_displacement_path(directory)

@@ -110,6 +110,11 @@ class ParallelFormOptimizationFitness
     
     data = template['DataFormOptimizationBS']['DataModel']
     data['mesh'] = @config.mesh_file
+    settings = @config.inferred_model_settings
+    data['variables'] = settings[:variables]
+    data['elementData'] ||= {}
+    data['elementData']['elementType'] = settings[:element_type]
+    data['elementData']['elementOrder'] = settings[:element_order]
     
     # Используем абсолютные пути
     template['DataFormOptimizationBS']['shiftCoefficients'] = File.absolute_path(shift_coef_file)

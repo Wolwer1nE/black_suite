@@ -2,6 +2,7 @@
 
 require 'json'
 require 'fileutils'
+require_relative 'mesh_loader'
 
 # Конфигурация для оптимизации формы через CMA-ES
 # Управляет шаблонами, рабочими каталогами и путями к файлам
@@ -39,6 +40,31 @@ class ShapeOptimizationConfig
     validate_mesh_file
   end
 
+  def inferred_model_settings
+    @inferred_model_settings ||= begin
+      mesh = Mesh.load_from_nas(@mesh_file)
+      element_types = mesh.element_types
+
+      if element_types.empty?
+        raise 'В сетке не найдено поддерживаемых элементов (CTRIA3/CTETRA).'
+      end
+
+      if element_types.size > 1
+        raise "Смешанные типы элементов пока не поддерживаются: #{element_types.join(', ')}"
+      end
+
+      dimension = mesh.spatial_dimension
+      element_type = element_types.first
+
+      {
+        dimension: dimension,
+        element_type: acli_element_type(element_type),
+        element_order: 1,
+        variables: dimension >= 3 ? ':ux, :uy, :uz' : ':ux, :uy'
+      }
+    end
+  end
+
   # Создаёт рабочий каталог
   def create_work_dir
     FileUtils.mkdir_p(@work_dir)
@@ -49,7 +75,9 @@ class ShapeOptimizationConfig
   # @return [String] путь к созданному файлу
   def create_shift_boundary_config
     template = read_template(@shift_boundaries_template)
-    template['DataShiftBoundaryBS']['DataModel']['mesh'] = @mesh_file
+    data_model = template['DataShiftBoundaryBS']['DataModel']
+    data_model['mesh'] = @mesh_file
+    apply_inferred_model_settings!(data_model)
 
     write_json(@shift_boundary_json, template)
     @shift_boundary_json
@@ -64,6 +92,7 @@ class ShapeOptimizationConfig
     
     data = template['DataFormOptimizationBS']['DataModel']
     data['mesh'] = @mesh_file
+    apply_inferred_model_settings!(data)
     
     # Используем абсолютные пути для всех файлов
     template['DataFormOptimizationBS']['shiftCoefficients'] = File.absolute_path(shift_coefficients_file)
@@ -180,5 +209,24 @@ class ShapeOptimizationConfig
       file.write(JSON.pretty_generate(data))
     end
     puts "Создан файл конфигурации: #{filepath}"
+  end
+
+  def apply_inferred_model_settings!(data_model)
+    settings = inferred_model_settings
+    data_model['variables'] = settings[:variables]
+    data_model['elementData'] ||= {}
+    data_model['elementData']['elementType'] = settings[:element_type]
+    data_model['elementData']['elementOrder'] = settings[:element_order]
+  end
+
+  def acli_element_type(element_type)
+    case element_type
+    when :triangle
+      ':triangle'
+    when :tetrahedron
+      ':tetrahedron'
+    else
+      raise "Неподдерживаемый тип элемента для ACLI: #{element_type.inspect}"
+    end
   end
 end

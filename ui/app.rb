@@ -145,6 +145,11 @@ post '/api/shapes/:shape_id/optimization' do
   entry = shape_repository.shape_entry(params[:shape_id])
   halt 404, { error: 'Фигура не найдена' }.to_json unless entry
 
+  support = shape_repository.optimization_support(params[:shape_id])
+  if support && !support[:supported]
+    halt 422, { error: support[:reason] }.to_json
+  end
+
   raw_body = request.body.read
   request_data = raw_body.empty? ? {} : JSON.parse(raw_body)
 
@@ -172,6 +177,11 @@ end
 
 get '/api/shapes/:shape_id/optimization/active' do
   content_type :json
+
+  support = shape_repository.optimization_support(params[:shape_id])
+  if support && !support[:supported]
+    halt 404, { error: support[:reason] }.to_json
+  end
 
   job = SHAPE_OPTIMIZATION_JOB_MANAGER.active_job_for_shape(params[:shape_id])
   halt 404, { error: 'Активная оптимизация не найдена' }.to_json unless job
