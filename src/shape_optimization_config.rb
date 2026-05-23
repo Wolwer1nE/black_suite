@@ -16,7 +16,7 @@ class ShapeOptimizationConfig
   # @param mesh_file [String] путь к файлу сетки
   # @param session_name [String, nil] имя сессии (если nil, генерируется автоматически)
   # @param base_data_dir [String] базовая директория для рабочих каталогов
-  def initialize(mesh_file:, session_name: nil, base_data_dir: 'data')
+  def initialize(mesh_file:, session_name: nil, base_data_dir: 'data', template: "")
     @mesh_file = File.absolute_path(mesh_file)
     @session_name = session_name || generate_session_name
     @base_data_dir = base_data_dir
