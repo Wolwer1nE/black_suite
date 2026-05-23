@@ -1,9 +1,9 @@
 require 'json'
 require_relative '../../src/mesh_loader'
-require_relative '../../src/normal_projected_surface_smoother'
+require_relative '../../src/surface_smoother'
 
 class ShapeRepository
-  DISPLACEMENT_FILENAME = NormalProjectedSurfaceSmoother::DEFAULT_OUTPUT_FILENAME
+  DISPLACEMENT_FILENAME = SurfaceSmoother::DEFAULT_OUTPUT_FILENAME
   DISPLACEMENT_GLOB = '*_displacements.json'
 
   def initialize(root_dir)
@@ -17,9 +17,11 @@ class ShapeRepository
     end
   end
 
-  def load_shape(shape_id)
+  def load_shape(shape_id, displacement_file: nil)
     entry = find_shape_entry(shape_id)
     return nil unless entry
+
+    entry = with_selected_displacement(entry, displacement_file)
 
     mesh = load_mesh(entry)
     build_payload(entry, mesh)
@@ -37,26 +39,30 @@ class ShapeRepository
     optimization_support_for(entry, mesh)
   end
 
-  def generate_displacements(shape_id, iterations:, lambda:, mu:, max_step:)
+  def generate_displacements(shape_id, iterations:, lambda:, mu:, max_step:, mode: 'legacy')
     entry = find_shape_entry(shape_id)
     return nil unless entry
 
     raise 'Для этой фигуры не найден файл нормалей.' unless entry[:normals_path]
 
-    smoother = NormalProjectedSurfaceSmoother.load(entry[:mesh_path], normals_path: entry[:normals_path])
+    smoother = SurfaceSmoother.load(entry[:mesh_path], normals_path: entry[:normals_path])
     requested_max_step = max_step
     effective_max_step = requested_max_step.nil? ? smoother.suggested_max_step : requested_max_step
+    normalized_mode = SurfaceSmoother.normalize_mode(mode)
+
+    generated_path = displacement_file_path(entry, mode: normalized_mode)
 
     smoother.save_displacement_file(
-      displacement_file_path(entry),
+      generated_path,
       iterations: iterations,
       lambda: lambda,
       mu: mu,
-      max_step: effective_max_step
+      max_step: effective_max_step,
+      mode: normalized_mode
     )
 
     mesh = load_mesh(entry)
-    build_payload(refresh_entry(entry), mesh)
+    build_payload(refresh_entry(entry).merge(displacement_path: generated_path), mesh)
   end
 
   private
@@ -165,7 +171,7 @@ class ShapeRepository
   def smoothing_stats(entry)
     return nil unless entry[:normals_path]
 
-    smoother = NormalProjectedSurfaceSmoother.load(entry[:mesh_path], normals_path: entry[:normals_path])
+    smoother = SurfaceSmoother.load(entry[:mesh_path], normals_path: entry[:normals_path])
     {
       characteristic_edge_length: smoother.characteristic_edge_length,
       suggested_max_step: smoother.suggested_max_step
@@ -208,8 +214,9 @@ class ShapeRepository
        .sort_by { |path| [-File.mtime(path).to_i, File.basename(path)] }
   end
 
-  def displacement_file_path(entry)
-    File.join(entry[:directory], DISPLACEMENT_FILENAME)
+  def displacement_file_path(entry, mode: SurfaceSmoother::LEGACY_MODE)
+    filename = SurfaceSmoother.output_filename_for_mode(mode)
+    File.join(entry[:directory], filename)
   end
 
   def refresh_entry(entry)
@@ -217,6 +224,19 @@ class ShapeRepository
       displacement_path: detect_displacement_path(entry[:directory]),
       displacement_files: detect_displacement_files(entry[:directory])
     )
+  end
+
+  def with_selected_displacement(entry, displacement_file)
+    filename = displacement_file.to_s.strip
+    return entry if filename.empty?
+
+    matching_path = Array(entry[:displacement_files]).find do |path|
+      File.basename(path) == filename
+    end
+
+    return entry unless matching_path
+
+    entry.merge(displacement_path: matching_path)
   end
 
   def load_displacements(path)

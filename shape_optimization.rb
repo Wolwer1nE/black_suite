@@ -12,6 +12,7 @@ require_relative 'src/optimization/cma_es'
 require_relative 'src/simple_logger'
 require_relative 'src/mesh_loader'
 require_relative 'src/displacement_visualization_payload'
+require_relative 'src/surface_smoother'
 
 def print_usage
   puts "Использование: ruby shape_optimization.rb <mesh_file> [options]"
@@ -26,6 +27,11 @@ def print_usage
   puts "  --max-gen INT      Максимум поколений (по умолчанию: 500)"
   puts "  --target FLOAT     Целевое значение fitness для остановки"
   puts "  --workers INT      Количество параллельных процессов acli (по умолчанию: 8)"
+  puts "  --pre-smoothing MODE  Инициализация от сглаживания: none|legacy|aggressive (по умолчанию: none)"
+  puts "  --smooth-iterations INT  Итерации предсглаживания (по умолчанию: 1)"
+  puts "  --smooth-lambda FLOAT    λ для предсглаживания (по умолчанию: 0.25)"
+  puts "  --smooth-mu FLOAT        μ для предсглаживания (по умолчанию: -0.26)"
+  puts "  --smooth-max-step FLOAT  max step для предсглаживания (по умолчанию: auto)"
   puts "  --no-parallel      Отключить параллельное выполнение"
   puts "  --help             Показать эту справку"
   puts ""
@@ -42,7 +48,12 @@ def parse_options(args)
     max_generations: 500,
     target_fitness: nil,
     workers: 8,
-    parallel: true
+    parallel: true,
+    pre_smoothing: 'none',
+    smooth_iterations: 1,
+    smooth_lambda: 0.25,
+    smooth_mu: -0.26,
+    smooth_max_step: nil
   }
 
   i = 0
@@ -68,6 +79,21 @@ def parse_options(args)
       i += 2
     when '--workers'
       options[:workers] = args[i + 1].to_i
+      i += 2
+    when '--pre-smoothing'
+      options[:pre_smoothing] = args[i + 1].to_s
+      i += 2
+    when '--smooth-iterations'
+      options[:smooth_iterations] = args[i + 1].to_i
+      i += 2
+    when '--smooth-lambda'
+      options[:smooth_lambda] = args[i + 1].to_f
+      i += 2
+    when '--smooth-mu'
+      options[:smooth_mu] = args[i + 1].to_f
+      i += 2
+    when '--smooth-max-step'
+      options[:smooth_max_step] = args[i + 1].to_f
       i += 2
     when '--no-parallel'
       options[:parallel] = false
@@ -109,6 +135,14 @@ def main
   puts "Параллелизация:"
   puts "  enabled: #{options[:parallel]}"
   puts "  workers: #{options[:workers]}" if options[:parallel]
+  puts "Предсглаживание:"
+  puts "  mode: #{options[:pre_smoothing]}"
+  if options[:pre_smoothing] != 'none'
+    puts "  iterations: #{options[:smooth_iterations]}"
+    puts "  lambda: #{options[:smooth_lambda]}"
+    puts "  mu: #{options[:smooth_mu].nil? ? 'none' : options[:smooth_mu]}"
+    puts "  max_step: #{options[:smooth_max_step] || 'auto'}"
+  end
   puts "=" * 70
 
   # 1. Инициализация конфигурации
@@ -131,6 +165,8 @@ def main
   end
   puts "=" * 70
 
+  initial_solution = build_pre_smoothing_initial_solution(config, boundaries, options)
+
   # 3. Инициализация fitness-функции
   if options[:parallel]
     fitness = ParallelFormOptimizationFitness.new(config, max_workers: options[:workers])
@@ -152,7 +188,8 @@ def main
     max_generations: options[:max_generations],
     target_fitness: options[:target_fitness],
     logger: logger,
-    seed: nil  # можно добавить опцию --seed для воспроизводимости
+    seed: nil,  # можно добавить опцию --seed для воспроизводимости
+    initial_solution: initial_solution
   )
 
   puts "\n" + "=" * 70
@@ -207,6 +244,34 @@ def main
   puts "\nГотово!"
 end
 
+def build_pre_smoothing_initial_solution(config, boundaries, options)
+  mode = options[:pre_smoothing].to_s
+  return nil if mode == 'none'
+
+  mesh = Mesh.load_from_nas(config.mesh_file)
+  mesh.load_normals!(config.normals_file)
+  ordered_node_ids = mesh.normals.keys.map(&:to_i)
+  smoother = SurfaceSmoother.build(mesh, movable_node_ids: ordered_node_ids)
+  normalized_mode = SurfaceSmoother.normalize_mode(mode)
+
+  coefficients = smoother.optimization_coefficients(
+    iterations: options[:smooth_iterations],
+    lambda: options[:smooth_lambda],
+    mu: options[:smooth_mu],
+    max_step: options[:smooth_max_step],
+    mode: normalized_mode
+  )
+
+  raise 'Размерность smoothing-инициализации не совпадает с boundaries.' unless coefficients.size == boundaries[:dimension]
+
+  clamped = coefficients.each_with_index.map do |value, index|
+    [[value, boundaries[:maxs][index]].min, boundaries[:mins][index]].max
+  end
+
+  puts "Начальная точка от #{mode} smoothing подготовлена (#{clamped.size} коэффициентов)."
+  clamped
+end
+
 def export_visualization_displacements(config, result, options, elapsed)
   mesh = Mesh.load_from_nas(config.mesh_file)
   mesh.load_normals!(config.normals_file)
@@ -225,7 +290,8 @@ def export_visualization_displacements(config, result, options, elapsed)
       generations: result[:generations],
       evaluations: result[:evaluations],
       best_fitness: result[:fitness],
-      elapsed_seconds: elapsed
+      elapsed_seconds: elapsed,
+      pre_smoothing_mode: options[:pre_smoothing]
     },
     stats: {
       coefficients_count: coefficients.size,

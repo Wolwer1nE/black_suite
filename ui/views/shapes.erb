@@ -61,6 +61,12 @@
                   <input class="form-check-input" type="checkbox" id="toggle-displacements">
                   <label class="form-check-label" for="toggle-displacements">Применять смещения из файла</label>
                 </div>
+                <div class="mt-2">
+                  <label for="displacement-file-select" class="form-label small mb-1">Файл смещений</label>
+                  <select id="displacement-file-select" class="form-select form-select-sm" disabled>
+                    <option value="">автовыбор</option>
+                  </select>
+                </div>
               </div>
               <div class="col-12">
                 <div class="form-check form-switch mb-2">
@@ -111,10 +117,13 @@
                     </div>
                     <div class="col-6">
                       <label for="smooth-max-step" class="form-label small mb-1">max step</label>
-                      <input id="smooth-max-step" type="number" class="form-control form-control-sm" step="0.0001" value="0.0005">
+                      <input id="smooth-max-step" type="number" class="form-control form-control-sm" step="0.000001" placeholder="авто">
                     </div>
                     <div class="col-12 d-grid">
-                      <button type="button" id="generate-displacements" class="btn btn-primary btn-sm">Пересчитать и сохранить смещения</button>
+                      <div class="d-grid gap-2">
+                        <button type="button" id="generate-displacements-legacy" class="btn btn-primary btn-sm">Сгладить по нормали</button>
+                        <button type="button" id="generate-displacements-aggressive" class="btn btn-outline-primary btn-sm">Сгладить агрессивно</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -156,8 +165,10 @@
                         <label class="form-check-label" for="opt-parallel">Параллельный режим</label>
                       </div>
                     </div>
-                    <div class="col-12 d-grid">
-                      <button type="button" id="start-shape-optimization" class="btn btn-success btn-sm">Запустить оптимизацию формы</button>
+                    <div class="col-12 d-grid gap-2">
+                      <button type="button" id="start-shape-optimization-none" class="btn btn-success btn-sm">Оптимизация без сглаживания</button>
+                      <button type="button" id="start-shape-optimization-legacy" class="btn btn-outline-success btn-sm">Оптимизация + старое сглаживание</button>
+                      <button type="button" id="start-shape-optimization-aggressive" class="btn btn-outline-success btn-sm">Оптимизация + новое сглаживание</button>
                     </div>
                   </div>
                   <div class="optimization-progress-card">

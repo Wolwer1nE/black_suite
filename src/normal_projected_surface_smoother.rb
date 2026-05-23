@@ -16,11 +16,17 @@ require_relative 'displacement_visualization_payload'
 # - ограничение движения вдоль нормали: delta_i = n_i * dot(laplacian_i, n_i)
 # - optional Taubin-style second pass (mu < 0) для уменьшения усадки поверхности.
 class NormalProjectedSurfaceSmoother
+  LEGACY_MODE = :legacy
+  AGGRESSIVE_MODE = :aggressive
+  DEFAULT_MODE = LEGACY_MODE
   DEFAULT_LAMBDA = 0.35
   DEFAULT_MU = -0.37
   DEFAULT_MAX_STEP = nil
   DEFAULT_OUTPUT_FILENAME = 'smoothing_displacements.json'
+  AGGRESSIVE_OUTPUT_FILENAME = 'aggressive_smoothing_displacements.json'
   DEFAULT_RELATIVE_MAX_STEP = 0.015
+  DEFAULT_TANGENTIAL_WEIGHT = 0.65
+  DEFAULT_TANGENTIAL_LIMIT_RATIO = 0.7
 
   attr_reader :mesh, :movable_node_ids, :surface_neighbors
 
@@ -30,70 +36,153 @@ class NormalProjectedSurfaceSmoother
     new(mesh, movable_node_ids: movable_node_ids)
   end
 
+  def self.normalize_mode(mode)
+    normalized = mode.to_s.strip.downcase
+    return DEFAULT_MODE if normalized.empty?
+
+    case normalized
+    when 'legacy', 'old', 'projected', 'normal'
+      LEGACY_MODE
+    when 'aggressive', 'blended', 'new'
+      AGGRESSIVE_MODE
+    else
+      raise ArgumentError, "Unknown smoothing mode: #{mode.inspect}"
+    end
+  end
+
+  def self.output_filename_for_mode(mode)
+    normalize_mode(mode) == AGGRESSIVE_MODE ? AGGRESSIVE_OUTPUT_FILENAME : DEFAULT_OUTPUT_FILENAME
+  end
+
   def initialize(mesh, movable_node_ids: nil)
     @mesh = mesh
-    @movable_node_ids = Array(movable_node_ids || mesh.normals.keys).map(&:to_i).uniq.sort
+    source_node_ids = movable_node_ids || mesh.normals.keys
+    @movable_node_ids = Array(source_node_ids).map(&:to_i).uniq
     @movable_node_set = @movable_node_ids.to_set
     @surface_neighbors = build_surface_neighbors
   end
 
   # Возвращает новый Mesh после сглаживания, не мутируя исходный объект.
-  def smoothed_mesh(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP)
+  def smoothed_mesh(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP,
+                    mode: DEFAULT_MODE, tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+                    tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
     result = duplicate_mesh(@mesh)
     smoother = self.class.new(result, movable_node_ids: @movable_node_ids)
-    smoother.smooth!(iterations: iterations, lambda: lambda, mu: mu, max_step: max_step)
+    smoother.smooth!(
+      iterations: iterations,
+      lambda: lambda,
+      mu: mu,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
     result
   end
 
   # Мутирует текущую сетку.
-  def smooth!(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP)
+  def smooth!(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP,
+              mode: DEFAULT_MODE, tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+              tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
     iterations.times do
-      apply_projected_pass!(lambda, max_step: max_step)
-      apply_projected_pass!(mu, max_step: max_step) unless mu.nil?
+      apply_smoothing_pass!(
+        lambda,
+        max_step: max_step,
+        mode: mode,
+        tangential_weight: tangential_weight,
+        tangential_limit_ratio: tangential_limit_ratio
+      )
+      next if mu.nil?
+
+      apply_smoothing_pass!(
+        mu,
+        max_step: max_step,
+        mode: mode,
+        tangential_weight: tangential_weight,
+        tangential_limit_ratio: tangential_limit_ratio
+      )
     end
     mesh
   end
 
   # Считает projected-Laplacian смещения в виде скаляров вдоль нормали.
   # Полезно, если потом хочется конвертировать шаг в shift_coefficients.
-  def smoothing_scalars(weight: DEFAULT_LAMBDA, max_step: DEFAULT_MAX_STEP)
-    displacements_for(weight, max_step: max_step).transform_values do |data|
+  def smoothing_scalars(weight: DEFAULT_LAMBDA, max_step: DEFAULT_MAX_STEP, mode: DEFAULT_MODE,
+                        tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+                        tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
+    displacements_for(
+      weight,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    ).transform_values do |data|
       data[:scalar]
     end
   end
 
   # Возвращает коэффициенты в порядке movable_node_ids.
-  def smoothing_coefficients(weight: DEFAULT_LAMBDA, max_step: DEFAULT_MAX_STEP)
-    scalars = smoothing_scalars(weight: weight, max_step: max_step)
+  def smoothing_coefficients(weight: DEFAULT_LAMBDA, max_step: DEFAULT_MAX_STEP, mode: DEFAULT_MODE,
+                             tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+                             tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
+    scalars = smoothing_scalars(
+      weight: weight,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
     @movable_node_ids.map { |node_id| scalars.fetch(node_id, 0.0) }
   end
 
-  def displacement_payload(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP)
-    resolved_max_step = resolve_max_step(max_step)
-    smoothed = smoothed_mesh(iterations: iterations, lambda: lambda, mu: mu, max_step: max_step)
+  def optimization_coefficients(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP,
+                                mode: DEFAULT_MODE, tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+                                tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
+    deltas = deltas_after_smoothing(
+      iterations: iterations,
+      lambda: lambda,
+      mu: mu,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
 
-    deltas_by_node_id = @movable_node_ids.each_with_object({}) do |node_id, acc|
-      source_coords = @mesh.nodes[node_id]
-      target_coords = smoothed.nodes[node_id]
-      next unless source_coords && target_coords
-
-      acc[node_id] = [
-        target_coords[0] - source_coords[0],
-        target_coords[1] - source_coords[1],
-        target_coords[2] - source_coords[2]
-      ]
+    @movable_node_ids.map do |node_id|
+      delta = deltas[node_id] || [0.0, 0.0, 0.0]
+      normal = normalized_normal(node_id)
+      normal ? dot(delta, normal) : 0.0
     end
+  end
+
+  def displacement_payload(iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP,
+                           mode: DEFAULT_MODE, tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+                           tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
+    normalized_mode = self.class.normalize_mode(mode)
+    resolved_max_step = resolve_max_step(max_step)
+    deltas_by_node_id = deltas_after_smoothing(
+      iterations: iterations,
+      lambda: lambda,
+      mu: mu,
+      max_step: max_step,
+      mode: normalized_mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
 
     DisplacementVisualizationPayload.from_deltas(
       mesh: @mesh,
       deltas_by_node_id: deltas_by_node_id,
-      type: 'normal_projected_surface_smoothing',
+      type: normalized_mode == AGGRESSIVE_MODE ? 'aggressive_surface_smoothing' : 'normal_projected_surface_smoothing',
       parameters: {
         iterations: iterations,
         lambda: lambda,
         mu: mu,
+        mode: normalized_mode,
         max_step: resolved_max_step,
-        requested_max_step: max_step
+        requested_max_step: max_step,
+        tangential_weight: normalized_mode == AGGRESSIVE_MODE ? tangential_weight : nil,
+        tangential_limit_ratio: normalized_mode == AGGRESSIVE_MODE ? tangential_limit_ratio : nil
       },
       stats: {
         characteristic_edge_length: characteristic_edge_length,
@@ -102,14 +191,24 @@ class NormalProjectedSurfaceSmoother
     )
   end
 
-  def save_displacement_file(path, iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP)
-    payload = displacement_payload(iterations: iterations, lambda: lambda, mu: mu, max_step: max_step)
+  def save_displacement_file(path, iterations: 1, lambda: DEFAULT_LAMBDA, mu: DEFAULT_MU, max_step: DEFAULT_MAX_STEP,
+                             mode: DEFAULT_MODE, tangential_weight: DEFAULT_TANGENTIAL_WEIGHT,
+                             tangential_limit_ratio: DEFAULT_TANGENTIAL_LIMIT_RATIO)
+    payload = displacement_payload(
+      iterations: iterations,
+      lambda: lambda,
+      mu: mu,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
     DisplacementVisualizationPayload.write(path, payload)
   end
 
   def characteristic_edge_length
     @characteristic_edge_length ||= begin
-      lengths = unique_surface_edges.filter_map do |left, right|
+      lengths = smoothing_edges.filter_map do |left, right|
         left_coords = @mesh.nodes[left]
         right_coords = @mesh.nodes[right]
         next unless left_coords && right_coords
@@ -122,13 +221,22 @@ class NormalProjectedSurfaceSmoother
   end
 
   def suggested_max_step
-    [0.0005, characteristic_edge_length * DEFAULT_RELATIVE_MAX_STEP].max
+    edge_length = characteristic_edge_length
+    return 0.0005 if edge_length <= 1e-12
+
+    edge_length * DEFAULT_RELATIVE_MAX_STEP
   end
 
   private
 
-  def apply_projected_pass!(weight, max_step:)
-    displacements = displacements_for(weight, max_step: max_step)
+  def apply_smoothing_pass!(weight, max_step:, mode:, tangential_weight:, tangential_limit_ratio:)
+    displacements = displacements_for(
+      weight,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
     displacements.each do |node_id, data|
       current = @mesh.nodes[node_id]
       delta = data[:delta]
@@ -141,9 +249,30 @@ class NormalProjectedSurfaceSmoother
     @mesh
   end
 
-  def displacements_for(weight, max_step:)
+  def deltas_after_smoothing(iterations:, lambda:, mu:, max_step:, mode:, tangential_weight:, tangential_limit_ratio:)
+    smoothed = smoothed_mesh(
+      iterations: iterations,
+      lambda: lambda,
+      mu: mu,
+      max_step: max_step,
+      mode: mode,
+      tangential_weight: tangential_weight,
+      tangential_limit_ratio: tangential_limit_ratio
+    )
+
+    @movable_node_ids.each_with_object({}) do |node_id, acc|
+      source_coords = @mesh.nodes[node_id]
+      target_coords = smoothed.nodes[node_id]
+      next unless source_coords && target_coords
+
+      acc[node_id] = subtract_vectors(target_coords, source_coords)
+    end
+  end
+
+  def displacements_for(weight, max_step:, mode:, tangential_weight:, tangential_limit_ratio:)
     return {} if weight.nil? || weight.zero?
 
+    normalized_mode = self.class.normalize_mode(mode)
     resolved_max_step = resolve_max_step(max_step)
 
     @movable_node_ids.each_with_object({}) do |node_id, acc|
@@ -163,9 +292,21 @@ class NormalProjectedSurfaceSmoother
         centroid[2] - current[2]
       ]
 
-      scalar = dot(laplacian, normal) * weight
-      scalar = clamp_scalar(scalar, resolved_max_step)
-      delta = normal.map { |component| component * scalar }
+      delta = case normalized_mode
+              when LEGACY_MODE
+                scalar = clamp_scalar(dot(laplacian, normal) * weight, resolved_max_step)
+                normal.map { |component| component * scalar }
+              when AGGRESSIVE_MODE
+                normal_projection = dot(laplacian, normal)
+                normal_delta = normal.map { |component| component * clamp_scalar(normal_projection * weight, resolved_max_step) }
+                tangent = subtract_vectors(laplacian, normal.map { |component| component * normal_projection })
+                tangent_delta = tangent.map { |component| component * weight * tangential_weight }
+                tangent_limit = resolved_max_step.nil? ? nil : resolved_max_step * tangential_limit_ratio
+                tangent_delta = clamp_vector_magnitude(tangent_delta, tangent_limit)
+                clamp_vector_magnitude(add_vectors(normal_delta, tangent_delta), resolved_max_step)
+              end
+
+      scalar = dot(delta, normal)
 
       acc[node_id] = {
         scalar: scalar,
@@ -179,14 +320,13 @@ class NormalProjectedSurfaceSmoother
   def build_surface_neighbors
     neighbors = Hash.new { |hash, key| hash[key] = Set.new }
 
-    @mesh.elements.each_value do |element|
-      node_ids = element[:nodes]
-      node_ids.combination(2) do |left, right|
-        next unless @movable_node_set.include?(left) && @movable_node_set.include?(right)
+    smoothing_edges.each do |left, right|
+      left_movable = @movable_node_set.include?(left)
+      right_movable = @movable_node_set.include?(right)
+      next unless left_movable || right_movable
 
-        neighbors[left] << right
-        neighbors[right] << left
-      end
+      neighbors[left] << right if left_movable
+      neighbors[right] << left if right_movable
     end
 
     @movable_node_ids.each do |node_id|
@@ -226,12 +366,28 @@ class NormalProjectedSurfaceSmoother
     end
   end
 
-  def unique_surface_edges
-    surface_simplices.each_with_object(Set.new) do |node_ids, edges|
+  def smoothing_edges
+    simplices = if @mesh.elements.values.any? { |element| element[:type] == :tetrahedron }
+                 surface_simplices
+               else
+                 triangle_simplices
+               end
+
+    simplices.each_with_object(Set.new) do |node_ids, edges|
       node_ids.combination(2) do |left, right|
         edges << [left, right].sort
       end
     end.to_a
+  end
+
+  def triangle_simplices
+    simplices = @mesh.elements.values
+                     .select { |element| element[:type] == :triangle }
+                     .map { |element| element[:nodes] }
+
+    return simplices unless simplices.empty?
+
+    surface_simplices
   end
 
   def normalized_normal(node_id)
@@ -263,8 +419,20 @@ class NormalProjectedSurfaceSmoother
     [sum[0] / count, sum[1] / count, sum[2] / count]
   end
 
+  def add_vectors(left, right)
+    left.zip(right).map { |a, b| a + b }
+  end
+
+  def subtract_vectors(left, right)
+    left.zip(right).map { |a, b| a - b }
+  end
+
   def dot(left, right)
     left.zip(right).sum { |a, b| a * b }
+  end
+
+  def vector_norm(vector)
+    Math.sqrt(dot(vector, vector))
   end
 
   def distance(left, right)
@@ -279,6 +447,16 @@ class NormalProjectedSurfaceSmoother
     return value if max_step.nil?
 
     [[value, max_step].min, -max_step].max
+  end
+
+  def clamp_vector_magnitude(vector, max_magnitude)
+    return vector if max_magnitude.nil?
+
+    magnitude = vector_norm(vector)
+    return vector if magnitude <= max_magnitude || magnitude <= 1e-16
+
+    scale = max_magnitude / magnitude
+    vector.map { |component| component * scale }
   end
 
   def duplicate_mesh(source)
@@ -306,7 +484,7 @@ if __FILE__ == $PROGRAM_NAME
   normals_path = ARGV[1] || File.join(__dir__, '..', 'data', 'shapes', 'opt_block', 'normals.txt')
 
   smoother = NormalProjectedSurfaceSmoother.load(mesh_path, normals_path: normals_path)
-  smoothed = smoother.smoothed_mesh(iterations: 3, lambda: 0.25, mu: -0.26, max_step: 0.0005)
+  smoothed = smoother.smoothed_mesh(iterations: 3, lambda: 0.25, mu: -0.26, max_step: 0.0005, mode: :aggressive)
 
   puts "Movable nodes: #{smoother.movable_node_ids.size}"
   sample_node_id = smoother.movable_node_ids.first

@@ -41,7 +41,7 @@ class Mesh
     mesh
   end
 
-  def self.load_normals(path)
+  def self.load_normals(path, mesh: nil)
     normals = {}
 
     File.foreach(path) do |line|
@@ -59,7 +59,7 @@ class Mesh
   end
 
   def load_normals!(path)
-    @normals = self.class.load_normals(path)
+    @normals = self.class.load_normals(path, mesh: self)
     self
   end
 
@@ -163,6 +163,14 @@ class Mesh
     @elements.values.map { |element| element[:type] }.uniq
   end
 
+  def surface_edges
+    if @elements.values.any? { |element| element[:type] == :tetrahedron }
+      tetra_surface_edges
+    else
+      triangle_boundary_edges
+    end
+  end
+
   # Save elements and nodes to JSON file
   def save_to_json(path)
     out = {
@@ -254,6 +262,43 @@ class Mesh
         f.puts 'ENDDATA'
       end
     end
+  end
+
+  private
+
+  def triangle_boundary_edges
+    edge_counts = Hash.new(0)
+
+    @elements.each_value do |element|
+      next unless element[:type] == :triangle && element[:nodes].size == 3
+
+      element[:nodes].combination(2) do |left, right|
+        edge_counts[[left, right].sort] += 1
+      end
+    end
+
+    edge_counts.filter_map do |edge, count|
+      edge if count == 1
+    end
+  end
+
+  def tetra_surface_edges
+    face_counts = Hash.new(0)
+
+    @elements.each_value do |element|
+      next unless element[:type] == :tetrahedron && element[:nodes].size == 4
+
+      a, b, c, d = element[:nodes]
+      [[a, b, c], [a, b, d], [a, c, d], [b, c, d]].each do |face|
+        face_counts[face.sort] += 1
+      end
+    end
+
+    face_counts.each_with_object(Set.new) do |(face, count), edges|
+      next unless count == 1
+
+      face.combination(2) { |left, right| edges << [left, right].sort }
+    end.to_a
   end
 end
 

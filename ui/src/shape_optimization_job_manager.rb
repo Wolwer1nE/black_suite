@@ -16,8 +16,9 @@ class ShapeOptimizationJobManager
 
   def start_or_reuse_job(shape_id:, mesh_path:, options:)
     @mutex.synchronize do
+      normalized = normalized_options(options)
       existing_job = @jobs.values.find do |job|
-        job[:shape_id] == shape_id && running_status?(refresh_job_state!(job))
+        job[:shape_id] == shape_id && job[:options] == normalized && running_status?(refresh_job_state!(job))
       end
       return serialize_job(existing_job, reused: true) if existing_job
 
@@ -37,7 +38,7 @@ class ShapeOptimizationJobManager
         session_name: session_name,
         log_path: log_path,
         command_args: command_args,
-        options: normalized_options(options),
+        options: normalized,
         status: 'running',
         phase: 'queued',
         started_at: Time.now,
@@ -89,6 +90,12 @@ class ShapeOptimizationJobManager
 
     args += ['--target', options[:target_fitness].to_s] if options[:target_fitness]
 
+    args += ['--pre-smoothing', options[:pre_smoothing_mode].to_s]
+    args += ['--smooth-iterations', options[:smooth_iterations].to_s]
+    args += ['--smooth-lambda', options[:smooth_lambda].to_s]
+    args += ['--smooth-mu', options[:smooth_mu].to_s] unless options[:smooth_mu].nil?
+    args += ['--smooth-max-step', options[:smooth_max_step].to_s] unless options[:smooth_max_step].nil?
+
     if options[:parallel]
       args += ['--workers', options[:workers].to_s]
     else
@@ -105,7 +112,12 @@ class ShapeOptimizationJobManager
       max_generations: options[:max_generations].to_i,
       target_fitness: options[:target_fitness],
       workers: options[:workers].to_i,
-      parallel: !!options[:parallel]
+      parallel: !!options[:parallel],
+      pre_smoothing_mode: options[:pre_smoothing_mode].to_s,
+      smooth_iterations: options[:smooth_iterations].to_i,
+      smooth_lambda: options[:smooth_lambda].to_f,
+      smooth_mu: options[:smooth_mu].nil? ? nil : options[:smooth_mu].to_f,
+      smooth_max_step: options[:smooth_max_step].nil? ? nil : options[:smooth_max_step].to_f
     }
   end
 

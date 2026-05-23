@@ -25,6 +25,7 @@ const viewerState = {
     pointer: null,
     selectedNormalNode: null,
     normalNodeBaseMaterial: null,
+    selectedDisplacementFile: null,
     optimizationJobId: null,
     optimizationPollTimer: null
 };
@@ -88,10 +89,6 @@ function initScene() {
     viewerState.scene.add(fillLight);
     viewerState.scene.add(new THREE.AxesHelper(1));
 
-    const grid = new THREE.GridHelper(10, 10, 0xcbd5e1, 0xe2e8f0);
-    grid.position.set(0, 0, 0);
-    viewerState.scene.add(grid);
-
     setViewerMessage('Выберите фигуру слева, чтобы построить сетку.');
     clearSelectedNodeInfo();
 }
@@ -102,6 +99,7 @@ function bindControls() {
     const displacementScale = document.getElementById('displacement-scale');
     const displacementScaleValue = document.getElementById('displacement-scale-value');
     const toggleDisplacements = document.getElementById('toggle-displacements');
+    const displacementFileSelect = document.getElementById('displacement-file-select');
     const toggleNormals = document.getElementById('toggle-normals');
     const toggleNormalNodes = document.getElementById('toggle-normal-nodes');
     const toggleEdges = document.getElementById('toggle-edges');
@@ -109,8 +107,11 @@ function bindControls() {
     const fitCameraButton = document.getElementById('fit-camera');
     const showAllBodiesButton = document.getElementById('show-all-bodies');
     const hideAllBodiesButton = document.getElementById('hide-all-bodies');
-    const generateDisplacementsButton = document.getElementById('generate-displacements');
-    const startShapeOptimizationButton = document.getElementById('start-shape-optimization');
+    const generateLegacyDisplacementsButton = document.getElementById('generate-displacements-legacy');
+    const generateAggressiveDisplacementsButton = document.getElementById('generate-displacements-aggressive');
+    const startShapeOptimizationNoneButton = document.getElementById('start-shape-optimization-none');
+    const startShapeOptimizationLegacyButton = document.getElementById('start-shape-optimization-legacy');
+    const startShapeOptimizationAggressiveButton = document.getElementById('start-shape-optimization-aggressive');
 
     normalScale.addEventListener('input', () => {
         viewerState.normalScaleMultiplier = Number(normalScale.value);
@@ -132,6 +133,13 @@ function bindControls() {
         viewerState.showDisplacements = toggleDisplacements.checked;
         if (viewerState.currentShape) {
             renderShape(viewerState.currentShape, { resetCamera: false });
+        }
+    });
+
+    displacementFileSelect.addEventListener('change', () => {
+        viewerState.selectedDisplacementFile = displacementFileSelect.value || null;
+        if (viewerState.currentShape) {
+            selectShape(viewerState.currentShape.id);
         }
     });
 
@@ -158,8 +166,11 @@ function bindControls() {
     fitCameraButton.addEventListener('click', fitCameraToCurrentShape);
     showAllBodiesButton.addEventListener('click', () => setAllBodiesVisibility(true));
     hideAllBodiesButton.addEventListener('click', () => setAllBodiesVisibility(false));
-    generateDisplacementsButton.addEventListener('click', requestGenerateDisplacements);
-    startShapeOptimizationButton.addEventListener('click', requestStartShapeOptimization);
+    generateLegacyDisplacementsButton.addEventListener('click', () => requestGenerateDisplacements('legacy'));
+    generateAggressiveDisplacementsButton.addEventListener('click', () => requestGenerateDisplacements('aggressive'));
+    startShapeOptimizationNoneButton.addEventListener('click', () => requestStartShapeOptimization('none'));
+    startShapeOptimizationLegacyButton.addEventListener('click', () => requestStartShapeOptimization('legacy'));
+    startShapeOptimizationAggressiveButton.addEventListener('click', () => requestStartShapeOptimization('aggressive'));
 
     viewerState.renderer.domElement.addEventListener('click', handleViewerClick);
 }
@@ -211,7 +222,7 @@ function selectShape(shapeId) {
     setActiveShape(shapeId);
     setViewerMessage('Загрузка геометрии и нормалей...');
 
-    fetch(`/api/shapes/${encodeURIComponent(shapeId)}`)
+    fetch(buildShapeRequestUrl(shapeId, viewerState.selectedDisplacementFile))
         .then(response => {
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
@@ -220,6 +231,7 @@ function selectShape(shapeId) {
         })
         .then(shape => {
             viewerState.currentShape = shape;
+            viewerState.selectedDisplacementFile = shape.displacement_file || null;
             viewerState.visibleBodies = new Set(getShapeBodyIds(shape));
             viewerState.showDisplacements = shapeHasDisplacements(shape);
             clearSelectedNormalNode();
@@ -320,6 +332,7 @@ function updateShapeSummary(shape) {
     `;
 
     renderBodyLegend(shape);
+    syncDisplacementFileSelector(shape);
     syncDisplayControls(shape);
 }
 
@@ -613,8 +626,8 @@ function syncDisplayControls(shape) {
     const transparencyHint = document.getElementById('transparency-hint');
     const displacementToggle = document.getElementById('toggle-displacements');
     const displacementScale = document.getElementById('displacement-scale');
-    const generateButton = document.getElementById('generate-displacements');
-    const optimizationButton = document.getElementById('start-shape-optimization');
+    const generateButtons = getSmoothingActionButtons();
+    const optimizationButtons = getOptimizationActionButtons();
     const hasNormals = Array.isArray(shape.normals) && shape.normals.length > 0;
     const hasDisplacements = shapeHasDisplacements(shape);
     const is3D = Number(shape.dimension) === 3;
@@ -645,8 +658,12 @@ function syncDisplayControls(shape) {
         setDisplacementStatus(`Найден ${shape.displacement_file || 'smoothing_displacements.json'} на ${shape.displacement_count || 0} узлов. Автоусиление деформации: ${viewerState.displacementAutoScale.toFixed(1)}×.`);
     }
 
-    generateButton.disabled = !hasNormals;
-    optimizationButton.disabled = !optimizationSupported;
+    generateButtons.forEach(button => {
+        button.disabled = !hasNormals;
+    });
+    optimizationButtons.forEach(button => {
+        button.disabled = !optimizationSupported;
+    });
 
     if (!optimizationSupported) {
         setOptimizationStatus(shape.optimization_support_reason || 'Для этой фигуры shape optimization недоступна.', 'warning');
@@ -907,23 +924,47 @@ function refreshShapeSummaries() {
         });
 }
 
-function requestGenerateDisplacements() {
+function buildShapeRequestUrl(shapeId, displacementFile) {
+    const url = new URL(`/api/shapes/${encodeURIComponent(shapeId)}`, window.location.origin);
+    if (displacementFile) {
+        url.searchParams.set('displacement_file', displacementFile);
+    }
+    return `${url.pathname}${url.search}`;
+}
+
+function syncDisplacementFileSelector(shape) {
+    const select = document.getElementById('displacement-file-select');
+    const files = Array.isArray(shape.displacement_files) ? shape.displacement_files : [];
+
+    select.innerHTML = '<option value="">автовыбор</option>';
+    files.forEach(file => {
+        const option = document.createElement('option');
+        option.value = file;
+        option.textContent = file;
+        select.appendChild(option);
+    });
+
+    select.disabled = files.length === 0;
+    select.value = shape.displacement_file || '';
+}
+
+function requestGenerateDisplacements(smoothingMode = 'legacy') {
     if (!viewerState.currentShape) {
         return;
     }
 
-    const iterations = Number(document.getElementById('smooth-iterations').value || 3);
-    const lambda = Number(document.getElementById('smooth-lambda').value || 0.25);
-    const muRaw = document.getElementById('smooth-mu').value;
-    const maxStepRaw = document.getElementById('smooth-max-step').value;
+    const smoothingParams = readSmoothingParameters(viewerState.currentShape);
+
     const payload = {
-        iterations,
-        lambda,
-        mu: muRaw === '' ? null : Number(muRaw),
-        max_step: maxStepRaw === '' ? null : Number(maxStepRaw)
+        iterations: smoothingParams.iterations,
+        lambda: smoothingParams.lambda,
+        mu: smoothingParams.mu,
+        max_step: smoothingParams.maxStep,
+        smoothing_mode: smoothingMode
     };
 
-    setDisplacementStatus('Считаю smoothing-смещения и сохраняю displacement JSON рядом с сеткой...', 'primary');
+    const modeLabel = smoothingMode === 'aggressive' ? 'агрессивные' : 'normal-only';
+    setDisplacementStatus(`Считаю ${modeLabel} smoothing-смещения и сохраняю displacement JSON рядом с сеткой...`, 'primary');
 
     fetch(`/api/shapes/${encodeURIComponent(viewerState.currentShape.id)}/displacements`, {
         method: 'POST',
@@ -945,14 +986,14 @@ function requestGenerateDisplacements() {
             updateShapeSummaryCache(data);
             updateShapeSummary(data);
             renderShape(data);
-            setDisplacementStatus(`Смещения сохранены в ${data.displacement_file || 'smoothing_displacements.json'}.`, 'success');
+            setDisplacementStatus(`Смещения (${modeLabel}) сохранены в ${data.displacement_file || 'smoothing_displacements.json'}.`, 'success');
         })
         .catch(error => {
             setDisplacementStatus(`Ошибка: ${error.message}`, 'danger');
         });
 }
 
-function requestStartShapeOptimization() {
+function requestStartShapeOptimization(preSmoothingMode = 'none') {
     if (!viewerState.currentShape) {
         return;
     }
@@ -962,6 +1003,8 @@ function requestStartShapeOptimization() {
         return;
     }
 
+    const smoothingParams = readSmoothingParameters(viewerState.currentShape);
+
     const payload = {
         session_name: document.getElementById('opt-session').value.trim(),
         sigma: Number(document.getElementById('opt-sigma').value || 0.3),
@@ -969,11 +1012,22 @@ function requestStartShapeOptimization() {
         max_generations: Number(document.getElementById('opt-max-gen').value || 500),
         workers: Number(document.getElementById('opt-workers').value || 8),
         parallel: document.getElementById('opt-parallel').checked,
-        target_fitness: parseOptionalNumber(document.getElementById('opt-target').value)
+        target_fitness: parseOptionalNumber(document.getElementById('opt-target').value),
+        pre_smoothing_mode: preSmoothingMode,
+        smooth_iterations: smoothingParams.iterations,
+        smooth_lambda: smoothingParams.lambda,
+        smooth_mu: smoothingParams.mu,
+        smooth_max_step: smoothingParams.maxStep
     };
 
-    setOptimizationStatus('Запускаю shape optimization в фоне...', 'primary');
-    setOptimizationProgress({ progress_percent: 2, phase: 'queued', recent_log_lines: ['Подготовка запуска оптимизации...'] });
+    const modeLabel = preSmoothingMode === 'none'
+        ? 'без предсглаживания'
+        : preSmoothingMode === 'aggressive'
+            ? 'с новым сглаживанием'
+            : 'со старым сглаживанием';
+
+    setOptimizationStatus(`Запускаю shape optimization ${modeLabel}...`, 'primary');
+    setOptimizationProgress({ progress_percent: 2, phase: 'queued', recent_log_lines: [`Подготовка запуска оптимизации ${modeLabel}...`] });
 
     fetch(`/api/shapes/${encodeURIComponent(viewerState.currentShape.id)}/optimization`, {
         method: 'POST',
@@ -1092,7 +1146,7 @@ function setOptimizationStatus(message, tone = 'muted') {
 }
 
 function setOptimizationProgress(job) {
-    const startButton = document.getElementById('start-shape-optimization');
+    const startButtons = getOptimizationActionButtons();
     const progressBar = document.getElementById('optimization-progress-bar');
     const progressLabel = document.getElementById('optimization-progress-label');
     const progressMeta = document.getElementById('optimization-progress-meta');
@@ -1105,7 +1159,9 @@ function setOptimizationProgress(job) {
     progressBar.classList.toggle('progress-bar-animated', !['completed', 'failed'].includes(job.status));
     progressBar.classList.toggle('bg-success', job.status === 'completed');
     progressBar.classList.toggle('bg-danger', job.status === 'failed');
-    startButton.disabled = ['running', 'queued'].includes(job.status);
+    startButtons.forEach(button => {
+        button.disabled = ['running', 'queued'].includes(job.status);
+    });
 
     progressLabel.textContent = buildOptimizationProgressLabel(job);
     progressMeta.textContent = buildOptimizationProgressMeta(job);
@@ -1149,9 +1205,7 @@ function buildOptimizationProgressMeta(job) {
 }
 
 function applySuggestedSmoothingInputs(shape) {
-    const suggestedMaxStep = shape.smoothing_stats && typeof shape.smoothing_stats.suggested_max_step === 'number'
-        ? shape.smoothing_stats.suggested_max_step
-        : null;
+    const suggestedMaxStep = getSuggestedSmoothingMaxStep(shape);
 
     if (suggestedMaxStep === null) {
         return;
@@ -1159,6 +1213,55 @@ function applySuggestedSmoothingInputs(shape) {
 
     const maxStepInput = document.getElementById('smooth-max-step');
     maxStepInput.value = suggestedMaxStep.toFixed(6);
+    maxStepInput.placeholder = suggestedMaxStep.toFixed(6);
+}
+
+function readSmoothingParameters(shape) {
+    const iterations = Number(document.getElementById('smooth-iterations').value || 3);
+    const lambda = Number(document.getElementById('smooth-lambda').value || 0.25);
+    const muRaw = document.getElementById('smooth-mu').value;
+    const maxStepInput = document.getElementById('smooth-max-step');
+    const maxStepRaw = maxStepInput.value;
+    const suggestedMaxStep = getSuggestedSmoothingMaxStep(shape);
+    let maxStep = parseOptionalNumber(maxStepRaw);
+
+    if (maxStep !== null && suggestedMaxStep !== null) {
+        const isLegacyDefault = Math.abs(maxStep - 0.0005) <= 1e-12;
+        const isMuchLargerThanSuggested = maxStep > suggestedMaxStep * 5;
+
+        if (isLegacyDefault && isMuchLargerThanSuggested) {
+            maxStep = suggestedMaxStep;
+            maxStepInput.value = suggestedMaxStep.toFixed(6);
+        }
+    }
+
+    return {
+        iterations,
+        lambda,
+        mu: parseOptionalNumber(muRaw),
+        maxStep
+    };
+}
+
+function getSmoothingActionButtons() {
+    return [
+        document.getElementById('generate-displacements-legacy'),
+        document.getElementById('generate-displacements-aggressive')
+    ].filter(Boolean);
+}
+
+function getOptimizationActionButtons() {
+    return [
+        document.getElementById('start-shape-optimization-none'),
+        document.getElementById('start-shape-optimization-legacy'),
+        document.getElementById('start-shape-optimization-aggressive')
+    ].filter(Boolean);
+}
+
+function getSuggestedSmoothingMaxStep(shape) {
+    return shape && shape.smoothing_stats && typeof shape.smoothing_stats.suggested_max_step === 'number'
+        ? shape.smoothing_stats.suggested_max_step
+        : null;
 }
 
 function parseOptionalNumber(value) {

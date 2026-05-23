@@ -109,7 +109,7 @@ end
 get '/api/shapes/:shape_id' do
   content_type :json
 
-  shape = shape_repository.load_shape(params[:shape_id])
+  shape = shape_repository.load_shape(params[:shape_id], displacement_file: params[:displacement_file])
   halt 404, { error: 'Фигура не найдена' }.to_json unless shape
 
   shape.to_json
@@ -126,7 +126,8 @@ post '/api/shapes/:shape_id/displacements' do
     iterations: (request_data['iterations'] || 3).to_i,
     lambda: (request_data['lambda'] || 0.25).to_f,
     mu: request_data.key?('mu') && !request_data['mu'].to_s.strip.empty? ? request_data['mu'].to_f : nil,
-    max_step: request_data.key?('max_step') && !request_data['max_step'].to_s.strip.empty? ? request_data['max_step'].to_f : nil
+    max_step: request_data.key?('max_step') && !request_data['max_step'].to_s.strip.empty? ? request_data['max_step'].to_f : nil,
+    mode: request_data['smoothing_mode'] || 'legacy'
   )
 
   halt 404, { error: 'Фигура не найдена' }.to_json unless shape
@@ -163,7 +164,12 @@ post '/api/shapes/:shape_id/optimization' do
       max_generations: request_data['max_generations'] || 500,
       target_fitness: request_data.key?('target_fitness') && !request_data['target_fitness'].to_s.strip.empty? ? request_data['target_fitness'].to_f : nil,
       workers: request_data['workers'] || 8,
-      parallel: request_data.key?('parallel') ? request_data['parallel'] : true
+      parallel: request_data.key?('parallel') ? request_data['parallel'] : true,
+      pre_smoothing_mode: request_data['pre_smoothing_mode'] || 'none',
+      smooth_iterations: request_data['smooth_iterations'] || 1,
+      smooth_lambda: request_data['smooth_lambda'] || 0.25,
+      smooth_mu: request_data.key?('smooth_mu') && !request_data['smooth_mu'].to_s.strip.empty? ? request_data['smooth_mu'].to_f : nil,
+      smooth_max_step: request_data.key?('smooth_max_step') && !request_data['smooth_max_step'].to_s.strip.empty? ? request_data['smooth_max_step'].to_f : nil
     }
   )
 

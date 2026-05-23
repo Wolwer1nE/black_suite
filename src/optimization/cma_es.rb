@@ -36,7 +36,7 @@ class CmaEs
   # @param seed [Integer, nil] seed для воспроизводимости
   def initialize(dimension:, mins:, maxs:, sigma: 0.3,
                  population_size: nil, max_evaluations: 10_000, max_generations: 1000,
-                 target_fitness: nil, logger: nil, seed: nil)
+                 target_fitness: nil, logger: nil, seed: nil, initial_solution: nil)
     @dimension = dimension
     @mins = mins.is_a?(Array) ? Vector[*mins] : mins
     @maxs = maxs.is_a?(Array) ? Vector[*maxs] : maxs
@@ -57,7 +57,7 @@ class CmaEs
     @mu_eff = 1.0 / @weights.map { |w| w * w }.sum
 
     # Начальное среднее — центр диапазона (нормализованное пространство [0,1])
-    @mean = Vector[*Array.new(@dimension, 0.5)]
+    @mean = initial_solution ? prepare_initial_mean(initial_solution) : Vector[*Array.new(@dimension, 0.5)]
 
     # Начальный размер шага
     @sigma = sigma
@@ -222,6 +222,14 @@ class CmaEs
   # Нормализация из исходного пространства в [0,1]
   def normalize(original)
     Vector[*original.each_with_index.map { |v, i| (v - @mins[i]) / (@maxs[i] - @mins[i]) }]
+  end
+
+  def prepare_initial_mean(initial_solution)
+    vector = initial_solution.is_a?(Vector) ? initial_solution : Vector[*Array(initial_solution).map(&:to_f)]
+    raise ArgumentError, 'initial_solution dimension mismatch' unless vector.size == @dimension
+
+    normalized = normalize(vector)
+    Vector[*normalized.to_a.map { |value| value.clamp(0.0, 1.0) }]
   end
 
   # Взвешенное среднее mu лучших особей
